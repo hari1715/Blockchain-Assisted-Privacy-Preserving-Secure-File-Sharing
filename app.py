@@ -1,0 +1,640 @@
+import os
+import cv2
+import numpy as np
+import base64
+import hashlib
+import random
+import time
+import datetime
+import sqlite3
+import pickle
+from flask import (
+    Flask,
+    render_template,
+    request,
+    redirect,
+    url_for,
+    session,
+    flash,
+    send_from_directory,
+)
+from flask_mail import Mail, Message
+from werkzeug.utils import secure_filename
+from blockchain import Blockchain
+
+app = Flask(__name__)
+app.secret_key = "strict_security_key"
+app.config["MAX_CONTENT_LENGTH"] = 1024 * 1024 * 1024
+app.config["UPLOAD_FOLDER"] = "static/uploads"
+
+# --- EMAIL CONFIGURATION ---
+app.config["MAIL_SERVER"] = "smtp.gmail.com"
+app.config["MAIL_PORT"] = 465
+app.config["MAIL_USERNAME"] = "hbavault@gmail.com"
+app.config["MAIL_PASSWORD"] = "tpip wgby edua fdcm"
+app.config["MAIL_USE_TLS"] = False
+app.config["MAIL_USE_SSL"] = True
+
+mail = Mail(app)
+blockchain = Blockchain()
+
+# --- BIOMETRIC INITIALIZATION ---
+face_cascade = cv2.CascadeClassifier(
+    cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+)
+# Use LBPH for texture-based recognition instead of color-based histograms
+recognizer = cv2.face.LBPHFaceRecognizer_create()
+
+
+# --- DATABASE AND HELPERS ---
+def init_db():
+    conn = sqlite3.connect("users.db")
+    c = conn.cursor()
+    # Users table
+    c.execute(
+        """CREATE TABLE IF NOT EXISTS users 
+                 (username TEXT PRIMARY KEY, password TEXT, email TEXT, role TEXT, face_data BLOB)"""
+    )
+
+    # Updated: Table now includes a column for the file hash
+    c.execute(
+        """CREATE TABLE IF NOT EXISTS file_permissions 
+                 (filename TEXT, owner TEXT, authorized_receiver TEXT, file_hash TEXT)"""
+    )
+    conn.commit()
+    conn.close()
+
+
+def hash_data(data):
+    return hashlib.sha256(data.encode()).hexdigest()
+
+
+def get_face_roi(image_base64):
+    """Extracts a grayscale face region for high-security texture analysis."""
+    try:
+        if not image_base64:
+            return None
+        encoded_data = image_base64.split(",")[1]
+        nparr = np.frombuffer(base64.b64decode(encoded_data), np.uint8)
+        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+        # Strict detection parameters
+        faces = face_cascade.detectMultiScale(gray, 1.2, 5)
+
+        if len(faces) == 0:
+            return None
+
+        (x, y, w, h) = faces[0]
+        # Crop and resize to standard dimensions for the recognizer
+        face_roi = cv2.resize(gray[y : y + h, x : x + w], (200, 200))
+        return face_roi
+    except Exception as e:
+        print(f"AI DEBUG: Processing error: {e}")
+        return None
+
+
+init_db()
+
+# --- ROUTES ---
+
+
+@app.route("/")
+def index():
+    return render_template("index.html")
+
+
+@app.route("/register", methods=["GET", "POST"])
+def register():
+    if request.method == "POST":
+        username = request.form["username"]
+        password = request.form["password"]
+        email = request.form["email"]
+        role = request.form["role"]
+        image_data = request.form.get("face_data")
+
+        face_roi = get_face_roi(image_data)
+        if face_roi is None:
+            flash("Biometric Enrollment Failed: No face detected.")
+            return redirect(request.url)
+
+        face_blob = pickle.dumps(face_roi)
+        try:
+            conn = sqlite3.connect("users.db")
+            c = conn.cursor()
+            c.execute(
+                "INSERT INTO users (username, password, email, role, face_data) VALUES (?, ?, ?, ?, ?)",
+                (username, password, email, role, face_blob),
+            )
+            conn.commit()
+            conn.close()
+            # Send welcome email
+            try:
+                welcome = Message(
+                    "Welcome to HBA Vault — Account Created",
+                    sender=app.config["MAIL_USERNAME"],
+                    recipients=[email],
+                )
+                welcome.html = f"""
+                <div style="font-family:Arial,sans-serif;max-width:540px;margin:auto;background:#05070f;color:#f1f5f9;border-radius:14px;overflow:hidden;border:1px solid rgba(99,202,255,0.15);">
+                  <!-- Header -->
+                  <div style="background:linear-gradient(135deg,#63caff,#a78bfa);padding:30px 32px;text-align:center;">
+                    <div style="font-size:2.2rem;margin-bottom:8px;">&#x1F6E1;</div>
+                    <h2 style="margin:0;color:#05070f;font-size:1.4rem;font-weight:800;letter-spacing:-0.02em;">Welcome to HBA Vault</h2>
+                    <p style="margin:6px 0 0;color:rgba(5,7,15,0.7);font-size:0.82rem;">Your account has been successfully created</p>
+                  </div>
+                  <!-- Body -->
+                  <div style="padding:28px 32px;">
+                    <p style="margin:0 0 18px;font-size:0.96rem;">Hi <strong>{username}</strong>, you're all set!</p>
+                    <!-- Account details table -->
+                    <table style="width:100%;border-collapse:collapse;border-radius:10px;overflow:hidden;margin-bottom:20px;">
+                      <tr>
+                        <td style="padding:10px 14px;background:#0d1f3c;color:#63caff;font-family:monospace;font-size:0.78rem;width:38%;">Username</td>
+                        <td style="padding:10px 14px;background:#0d1f3c;font-size:0.88rem;">{username}</td>
+                      </tr>
+                      <tr>
+                        <td style="padding:10px 14px;background:#0a1628;color:#63caff;font-family:monospace;font-size:0.78rem;">Email</td>
+                        <td style="padding:10px 14px;background:#0a1628;font-size:0.88rem;">{email}</td>
+                      </tr>
+                      <tr>
+                        <td style="padding:10px 14px;background:#0d1f3c;color:#63caff;font-family:monospace;font-size:0.78rem;">Role</td>
+                        <td style="padding:10px 14px;background:#0d1f3c;font-size:0.88rem;">{role.capitalize()}</td>
+                      </tr>
+                    </table>
+                    <!-- Security note -->
+                    <div style="background:rgba(251,191,36,0.07);border:1px solid rgba(251,191,36,0.2);border-radius:8px;padding:12px 14px;margin-bottom:20px;">
+                      <p style="margin:0;font-size:0.78rem;color:#fbbf24;line-height:1.6;">
+                        &#x1F512; <strong>Security reminder:</strong> Never share your password or OTP with anyone. HBA Vault staff will never ask for them.
+                      </p>
+                    </div>
+                    <!-- What's next -->
+                    <p style="margin:0 0 10px;font-size:0.82rem;color:rgba(241,245,249,0.55);">What's next?</p>
+                    <ul style="margin:0 0 0 16px;padding:0;font-size:0.84rem;color:rgba(241,245,249,0.75);line-height:2;">
+                      <li>Log in with your username and password</li>
+                      <li>Complete facial biometric verification</li>
+                      <li>Start securely {'uploading files' if role == 'sender' else 'receiving files'}</li>
+                    </ul>
+                  </div>
+                  <!-- Footer -->
+                  <div style="padding:14px 32px;background:#0a1628;display:flex;justify-content:space-between;align-items:center;">
+                    <span style="font-size:0.72rem;color:#475569;">HBA Vault &mdash; Blockchain-Secured File Sharing</span>
+                    <span style="font-size:0.72rem;color:#475569;">SRM Vadapalani, Chennai</span>
+                  </div>
+                </div>"""
+                mail.send(welcome)
+            except Exception as e:
+                print(f"Welcome email error: {e}")
+            flash("Registration Successful!", "success")
+            return redirect(url_for("login"))
+        except:
+            flash("Username taken.")
+    return render_template("register.html")
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if request.method == "POST":
+        username = request.form["username"]
+        password = request.form["password"]
+
+        conn = sqlite3.connect("users.db")
+        conn.row_factory = sqlite3.Row
+        c = conn.cursor()
+        c.execute("SELECT * FROM users WHERE username = ?", (username,))
+        user = c.fetchone()
+        conn.close()
+
+        if user and user["password"] == password:
+            session["pre_user"] = username
+            session["role"] = user["role"]
+            session["email"] = user["email"]
+            return redirect(url_for("face_verify"))
+        else:
+            flash("Invalid Password")
+    return render_template("login.html")
+
+
+@app.route("/face_verify", methods=["GET", "POST"])
+def face_verify():
+    if "pre_user" not in session:
+        return redirect(url_for("login"))
+
+    if request.method == "POST":
+        image_data = request.form.get("image")
+        login_face = get_face_roi(image_data)
+
+        conn = sqlite3.connect("users.db")
+        conn.row_factory = sqlite3.Row
+        c = conn.cursor()
+        c.execute(
+            "SELECT face_data, role FROM users WHERE username = ?",
+            (session["pre_user"],),
+        )
+        user_row = c.fetchone()
+        conn.close()
+
+        if login_face is None:
+            flash("Biometric Scan Failed: No face detected.")
+            return redirect(url_for("face_verify"))
+
+        is_match = False
+        if user_row and user_row["face_data"]:
+            stored_face = pickle.loads(user_row["face_data"])
+
+            # Train the recognizer on the single stored face
+            recognizer.train([stored_face], np.array([1]))
+            # Predict returns [Label, Confidence]. LOWER confidence means BETTER match.
+            label, confidence = recognizer.predict(login_face)
+
+            print(
+                f"SECURITY AUDIT: User '{session['pre_user']}' Confidence: {round(confidence, 2)}"
+            )
+
+            # Threshold: Usually confidence below 75 is a good match for LBPH
+            if confidence < 75:
+                is_match = True
+
+        if is_match:
+            session["username"] = session.pop("pre_user")
+            blockchain.new_transaction(
+                session["username"], "System", f'AUTH:SUCCESS:{session["role"]}'
+            )
+            blockchain.new_block(proof=123)
+            return redirect(
+                url_for(
+                    "sender_dashboard"
+                    if session["role"] == "sender"
+                    else "receiver_dashboard"
+                )
+            )
+        else:
+            flash("Biometric Mismatch. Access Denied.")
+            return redirect(url_for("login"))
+
+    return render_template("face_verify.html")
+
+
+# --- SENDER LOGIC ---
+@app.route("/sender", methods=["GET", "POST"])
+def sender_dashboard():
+    if "username" not in session or session.get("role") != "sender":
+        return redirect(url_for("login"))
+
+    conn = sqlite3.connect("users.db")
+    conn.row_factory = sqlite3.Row
+    c = conn.cursor()
+    c.execute("SELECT username FROM users WHERE role = 'receiver'")
+    receivers = c.fetchall()
+    conn.close()
+
+    if request.method == "POST":
+        file = request.files.get("file")
+        target_receiver = request.form.get("target_receiver")
+
+        if file and target_receiver:
+            filename = secure_filename(file.filename)
+            otp = str(random.randint(100000, 999999))
+
+            session["upload_otp"] = otp
+            session["pending_filename"] = filename
+            session["target_receiver"] = target_receiver
+            file.save(os.path.join(app.config["UPLOAD_FOLDER"], filename))
+
+            try:
+                msg = Message(
+                    "Upload Authorization",
+                    sender=app.config["MAIL_USERNAME"],
+                    recipients=[session["email"]],
+                )
+                msg.body = f"OTP to authorize upload of '{filename}' for receiver '{target_receiver}': {otp}"
+                mail.send(msg)
+                flash(f"OTP sent to {session['email']}.")
+                return redirect(url_for("verify_upload"))
+            except Exception as e:
+                flash(f"Mail Error: {e}")
+
+    user_history = [
+        tx
+        for block in blockchain.chain
+        for tx in block["transactions"]
+        if tx["sender"] == session["username"]
+    ]
+    return render_template("sender.html", receivers=receivers, history=user_history)
+
+@app.route("/view_file/<filename>")
+def view_file(filename):
+    if "username" not in session:
+        return redirect(url_for("login"))
+
+    return send_from_directory(
+        app.config["UPLOAD_FOLDER"],
+        filename
+    )
+
+
+
+@app.route("/verify_upload", methods=["GET", "POST"])
+def verify_upload():
+    if "upload_otp" not in session:
+        return redirect(url_for("sender_dashboard"))
+
+    if request.method == "POST":
+        user_otp = request.form.get("otp")
+
+        if user_otp == session.get("upload_otp"):
+            filename = session.pop("pending_filename")
+            receiver = session.pop("target_receiver")
+            session.pop("upload_otp", None)
+
+            # 1. Generate the Digital Fingerprint (Hash)
+            current_file_hash = hash_data(filename)
+
+            # 2. Save Hash and Permission to SQLite Database
+            conn = sqlite3.connect("users.db")
+            c = conn.cursor()
+            # Note: Ensure your 'file_permissions' table has 4 columns now
+            c.execute(
+                "INSERT INTO file_permissions (filename, owner, authorized_receiver, file_hash) VALUES (?, ?, ?, ?)",
+                (filename, session["username"], receiver, current_file_hash),
+            )
+            conn.commit()
+            conn.close()
+
+            # 3. Save Hash to Blockchain Transaction
+            blockchain.new_transaction(
+                session["username"], receiver, f"FILE_HASH:{current_file_hash}"
+            )
+            blockchain.new_block(proof=12345)
+
+            # 4. Send upload notification email to receiver
+            try:
+                conn_n = sqlite3.connect("users.db")
+                conn_n.row_factory = sqlite3.Row
+                c_n = conn_n.cursor()
+                c_n.execute("SELECT email FROM users WHERE username = ?", (receiver,))
+                recv_row = c_n.fetchone()
+                conn_n.close()
+
+                if recv_row and recv_row["email"]:
+                    timestamp = datetime.datetime.now().strftime("%d %b %Y, %I:%M %p")
+                    notif = Message(
+                        f"HBA Vault — New File Shared With You: {filename}",
+                        sender=app.config["MAIL_USERNAME"],
+                        recipients=[recv_row["email"]],
+                    )
+                    notif.html = f"""
+                    <div style="font-family:Arial,sans-serif;max-width:540px;margin:auto;background:#05070f;color:#f1f5f9;border-radius:14px;overflow:hidden;border:1px solid rgba(99,202,255,0.15);">
+                      <div style="background:linear-gradient(135deg,#63caff,#a78bfa);padding:28px 32px;text-align:center;">
+                        <div style="font-size:2.2rem;margin-bottom:8px;">&#x1F4E5;</div>
+                        <h2 style="margin:0;color:#05070f;font-size:1.3rem;font-weight:800;">New File Shared With You</h2>
+                        <p style="margin:6px 0 0;color:rgba(5,7,15,0.7);font-size:0.82rem;">A sender has securely shared a file with your account</p>
+                      </div>
+                      <div style="padding:28px 32px;">
+                        <p style="margin:0 0 18px;font-size:0.96rem;">Hi <strong>{receiver}</strong>,</p>
+                        <p style="margin:0 0 18px;font-size:0.88rem;color:rgba(241,245,249,0.7);"><strong>{session['username']}</strong> has shared a file with you on HBA Vault. You can now request to download it after completing OTP verification.</p>
+                        <table style="width:100%;border-collapse:collapse;border-radius:10px;overflow:hidden;margin-bottom:20px;">
+                          <tr>
+                            <td style="padding:10px 14px;background:#0d1f3c;color:#63caff;font-family:monospace;font-size:0.78rem;width:38%;">File Name</td>
+                            <td style="padding:10px 14px;background:#0d1f3c;font-size:0.88rem;word-break:break-all;">{filename}</td>
+                          </tr>
+                          <tr>
+                            <td style="padding:10px 14px;background:#0a1628;color:#63caff;font-family:monospace;font-size:0.78rem;">Shared By</td>
+                            <td style="padding:10px 14px;background:#0a1628;font-size:0.88rem;">{session['username']}</td>
+                          </tr>
+                          <tr>
+                            <td style="padding:10px 14px;background:#0d1f3c;color:#63caff;font-family:monospace;font-size:0.78rem;">Shared On</td>
+                            <td style="padding:10px 14px;background:#0d1f3c;font-size:0.88rem;">{timestamp}</td>
+                          </tr>
+                        </table>
+                        <div style="background:rgba(99,202,255,0.06);border:1px solid rgba(99,202,255,0.18);border-radius:10px;padding:14px 16px;margin-bottom:20px;">
+                          <p style="margin:0 0 8px;font-size:0.8rem;color:#63caff;font-weight:700;">&#x2139;&#xFE0F; How to download</p>
+                          <ol style="margin:0;padding-left:18px;font-size:0.82rem;color:rgba(241,245,249,0.65);line-height:2;">
+                            <li>Log in to HBA Vault with your credentials</li>
+                            <li>Complete facial biometric verification</li>
+                            <li>Find the file on your Receiver Dashboard</li>
+                            <li>Click <strong>Request Download</strong> and enter the OTP sent to your email</li>
+                          </ol>
+                        </div>
+                        <div style="background:rgba(251,191,36,0.07);border:1px solid rgba(251,191,36,0.2);border-radius:8px;padding:12px 14px;">
+                          <p style="margin:0;font-size:0.78rem;color:#fbbf24;line-height:1.6;">&#x1F512; <strong>Security reminder:</strong> Never share your OTP with anyone. HBA Vault staff will never ask for it.</p>
+                        </div>
+                      </div>
+                      <div style="padding:14px 32px;background:#0a1628;display:flex;justify-content:space-between;">
+                        <span style="font-size:0.72rem;color:#475569;">HBA Vault &mdash; Blockchain-Secured File Sharing</span>
+                        <span style="font-size:0.72rem;color:#475569;">SRM Vadapalani, Chennai</span>
+                      </div>
+                    </div>"""
+                    mail.send(notif)
+                    print(f"Upload notification sent to {recv_row['email']}")
+                else:
+                    print(f"No email found for receiver: {receiver}")
+            except Exception as e:
+                print(f"Receiver notification email error: {e}")
+
+            flash("Upload Authorized and Recorded on Blockchain!", "success")
+            return redirect(url_for("sender_dashboard"))
+
+        else:
+            # FIX: If OTP is wrong, we MUST return a redirect or render
+            flash("Invalid OTP. Please try again.", "danger")
+            return render_template(
+                "upload_verify.html",
+                title="Authorize Upload",
+                target=session.get("pending_filename"),
+            )
+
+    # Default GET request behavior
+    return render_template(
+        "upload_verify.html",
+        title="Authorize Upload",
+        target=session.get("pending_filename"),
+    )
+
+
+# --- RECEIVER LOGIC ---
+@app.route("/receiver")
+def receiver_dashboard():
+    if "username" not in session or session.get("role") != "receiver":
+        return redirect(url_for("login"))
+
+    conn = sqlite3.connect("users.db")
+    conn.row_factory = sqlite3.Row
+    c = conn.cursor()
+    c.execute(
+        "SELECT filename FROM file_permissions WHERE authorized_receiver = ?",
+        (session["username"],),
+    )
+    allowed_files = [row["filename"] for row in c.fetchall()]
+    conn.close()
+
+    user_history = [
+        tx
+        for block in blockchain.chain
+        for tx in block["transactions"]
+        if tx["sender"] == session["username"] or tx["recipient"] == session["username"]
+    ]
+
+    return render_template("receiver.html", files=allowed_files, history=user_history)
+
+
+@app.route("/request_download/<filename>")
+def request_download(filename):
+    if "username" not in session:
+        return redirect(url_for("login"))
+
+    if "email" not in session or not session["email"]:
+        conn = sqlite3.connect("users.db")
+        conn.row_factory = sqlite3.Row
+        c = conn.cursor()
+        c.execute("SELECT email FROM users WHERE username = ?", (session["username"],))
+        user = c.fetchone()
+        conn.close()
+        if user:
+            session["email"] = user["email"]
+
+    conn = sqlite3.connect("users.db")
+    c = conn.cursor()
+    c.execute(
+        "SELECT * FROM file_permissions WHERE filename = ? AND authorized_receiver = ?",
+        (filename, session["username"]),
+    )
+    permission = c.fetchone()
+    conn.close()
+
+    if not permission:
+        flash("Access Denied!")
+        return redirect(url_for("receiver_dashboard"))
+
+    otp = str(random.randint(100000, 999999))
+    session["download_otp"] = otp
+    session["target_file"] = filename
+
+    try:
+        msg = Message(
+            "Download Authorization",
+            sender=app.config["MAIL_USERNAME"],
+            recipients=[session["email"]],
+        )
+        msg.body = f"OTP for secure download of '{filename}': {otp}"
+        mail.send(msg)
+        flash(f"OTP sent to {session['email']}.")
+        return redirect(url_for("verify_download"))
+    except Exception as e:
+        flash(f"Mail delivery failed: {e}")
+
+    return redirect(url_for("receiver_dashboard"))
+
+
+@app.route("/verify_download", methods=["GET", "POST"])
+def verify_download():
+    if "download_otp" not in session:
+        return redirect(url_for("receiver_dashboard"))
+
+    if request.method == "POST":
+        if request.form.get("otp") == session.get("download_otp"):
+            filename = session.pop("target_file")
+            session.pop("download_otp", None)
+
+            blockchain.new_transaction("Network", session["username"], f"DL:{filename}")
+            blockchain.new_block(proof=12345)
+
+            # Send download receipt email to sender
+            try:
+                conn_dl = sqlite3.connect("users.db")
+                conn_dl.row_factory = sqlite3.Row
+                c_dl = conn_dl.cursor()
+                c_dl.execute(
+                    "SELECT owner FROM file_permissions WHERE filename = ? AND authorized_receiver = ?",
+                    (filename, session["username"])
+                )
+                perm = c_dl.fetchone()
+
+                # Count how many times this receiver has downloaded this file
+                dl_count = sum(
+                    1 for block in blockchain.chain
+                    for tx in block["transactions"]
+                    if tx["recipient"] == session["username"] and f"DL:{filename}" in tx["amount"]
+                )
+
+                if perm:
+                    sender_name = perm["owner"]
+                    c_dl.execute("SELECT email FROM users WHERE username = ?", (sender_name,))
+                    sender_row = c_dl.fetchone()
+                    conn_dl.close()
+
+                    if sender_row and sender_row["email"]:
+                        timestamp = datetime.datetime.now().strftime("%d %b %Y, %I:%M %p")
+                        receipt = Message(
+                            f"HBA Vault — Download Receipt: {filename}",
+                            sender=app.config["MAIL_USERNAME"],
+                            recipients=[sender_row["email"]],
+                        )
+                        receipt.html = f"""
+                        <div style="font-family:Arial,sans-serif;max-width:540px;margin:auto;background:#05070f;color:#f1f5f9;border-radius:14px;overflow:hidden;border:1px solid rgba(99,202,255,0.15);">
+                          <div style="background:linear-gradient(135deg,#34d399,#63caff);padding:28px 32px;text-align:center;">
+                            <div style="font-size:2.2rem;margin-bottom:8px;">&#x2705;</div>
+                            <h2 style="margin:0;color:#05070f;font-size:1.3rem;font-weight:800;">Your File Was Downloaded</h2>
+                            <p style="margin:6px 0 0;color:rgba(5,7,15,0.7);font-size:0.82rem;">A receiver has successfully downloaded your shared file</p>
+                          </div>
+                          <div style="padding:28px 32px;">
+                            <p style="margin:0 0 18px;font-size:0.96rem;">Hi <strong>{sender_name}</strong>,</p>
+                            <p style="margin:0 0 18px;font-size:0.88rem;color:rgba(241,245,249,0.7);"><strong>{session['username']}</strong> has downloaded your file after completing OTP verification.</p>
+                            <table style="width:100%;border-collapse:collapse;border-radius:10px;overflow:hidden;margin-bottom:20px;">
+                              <tr>
+                                <td style="padding:10px 14px;background:#0d1f3c;color:#63caff;font-family:monospace;font-size:0.78rem;width:38%;">File Name</td>
+                                <td style="padding:10px 14px;background:#0d1f3c;font-size:0.88rem;word-break:break-all;">{filename}</td>
+                              </tr>
+                              <tr>
+                                <td style="padding:10px 14px;background:#0a1628;color:#63caff;font-family:monospace;font-size:0.78rem;">Downloaded By</td>
+                                <td style="padding:10px 14px;background:#0a1628;font-size:0.88rem;">{session['username']}</td>
+                              </tr>
+                              <tr>
+                                <td style="padding:10px 14px;background:#0d1f3c;color:#63caff;font-family:monospace;font-size:0.78rem;">Downloaded On</td>
+                                <td style="padding:10px 14px;background:#0d1f3c;font-size:0.88rem;">{timestamp}</td>
+                              </tr>
+                              <tr>
+                                <td style="padding:10px 14px;background:#0a1628;color:#63caff;font-family:monospace;font-size:0.78rem;">Download Count</td>
+                                <td style="padding:10px 14px;background:#0a1628;font-size:0.88rem;">#{dl_count} by {session['username']}</td>
+                              </tr>
+                            </table>
+                            <div style="background:rgba(52,211,153,0.07);border:1px solid rgba(52,211,153,0.2);border-radius:10px;padding:14px 16px;">
+                              <p style="margin:0;font-size:0.82rem;color:#34d399;line-height:1.6;">&#x1F4CB; This is an automated receipt. The download was OTP-verified and recorded on the blockchain ledger.</p>
+                            </div>
+                          </div>
+                          <div style="padding:14px 32px;background:#0a1628;display:flex;justify-content:space-between;">
+                            <span style="font-size:0.72rem;color:#475569;">HBA Vault &mdash; Blockchain-Secured File Sharing</span>
+                            <span style="font-size:0.72rem;color:#475569;">SRM Vadapalani, Chennai</span>
+                          </div>
+                        </div>"""
+                        mail.send(receipt)
+                        print(f"Download receipt sent to {sender_row['email']}")
+                else:
+                    conn_dl.close()
+            except Exception as e:
+                print(f"Download receipt email error: {e}")
+
+            return send_from_directory(
+                app.config["UPLOAD_FOLDER"],
+                filename,
+                as_attachment=True
+            )
+
+
+        flash("Incorrect OTP.", "danger")
+    return render_template(
+        "upload_verify.html",
+        title="Authorize Download",
+        target=session.get("target_file"),
+    )
+
+
+@app.route("/logout")
+def logout():
+    session.clear()
+    return redirect(url_for("index"))
+
+
+if __name__ == "__main__":
+    if not os.path.exists(app.config["UPLOAD_FOLDER"]):
+        os.makedirs(app.config["UPLOAD_FOLDER"])
+    app.run(debug=True)

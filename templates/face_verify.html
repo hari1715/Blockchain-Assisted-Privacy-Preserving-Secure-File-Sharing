@@ -1,0 +1,397 @@
+{% extends "base.html" %}
+{% block title %}Biometric Verify | HBA Vault{% endblock %}
+
+{% block content %}
+<style>
+/* ═══════════════════════════════════════════
+   FACE VERIFY PAGE — extends base.html
+═══════════════════════════════════════════ */
+.bio-wrap {
+    min-height: 82vh;
+    display: flex; align-items: center; justify-content: center;
+    padding: 2rem 0;
+}
+
+.bio-card {
+    width: 100%; max-width: 500px;
+    background: rgba(9,13,26,0.78);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    border: 1px solid rgba(99,202,255,0.18);
+    border-radius: 24px; padding: 2.6rem 2.2rem;
+    box-shadow:
+        0 0 0 1px rgba(99,202,255,0.06),
+        0 40px 80px rgba(0,0,0,0.5),
+        inset 0 1px 0 rgba(255,255,255,0.05);
+    animation: cardIn 0.6s cubic-bezier(0.16,1,0.3,1) both;
+    position: relative; overflow: hidden;
+}
+.bio-card::before {
+    content:''; position:absolute; top:0; left:10%; right:10%; height:1px;
+    background:linear-gradient(90deg,transparent,rgba(99,202,255,0.55),transparent);
+}
+@keyframes cardIn {
+    from{opacity:0;transform:translateY(24px) scale(0.97);}
+    to  {opacity:1;transform:translateY(0)    scale(1);}
+}
+
+/* header */
+.bio-header { text-align:center; margin-bottom:1.6rem; }
+.bio-eyebrow {
+    display:inline-flex; align-items:center; gap:0.4rem;
+    padding:0.28rem 0.8rem; border-radius:999px;
+    border:1px solid rgba(99,202,255,0.25);
+    font-family:'Space Mono',monospace;
+    font-size:0.68rem; letter-spacing:0.1em;
+    color:rgba(99,202,255,0.75); margin-bottom:0.8rem;
+}
+.bio-eyebrow .e-dot {
+    width:6px; height:6px; border-radius:50%;
+    background:#63caff; box-shadow:0 0 6px #63caff;
+    animation:blink 1.8s ease infinite;
+}
+@keyframes blink{0%,100%{opacity:1;}50%{opacity:0.3;}}
+
+.bio-title {
+    font-size:1.45rem; font-weight:800; letter-spacing:-0.02em;
+    margin-bottom:0.25rem;
+}
+.bio-sub {
+    font-family:'Space Mono',monospace;
+    font-size:0.7rem; letter-spacing:0.07em;
+    color:rgba(241,245,249,0.5);
+}
+
+/* progress steps */
+.step-row {
+    display:flex; gap:0.4rem; margin-bottom:1.8rem;
+}
+.step {
+    flex:1; height:3px; border-radius:2px;
+    background:rgba(255,255,255,0.08);
+}
+.step.done   { background:#63caff; }
+.step.active { background:linear-gradient(90deg,#63caff,#a78bfa); }
+
+/* camera frame */
+.cam-wrap {
+    position:relative; border-radius:16px; overflow:hidden;
+    border:1px solid rgba(99,202,255,0.2);
+    background:#000;
+    box-shadow:
+        0 0 0 4px rgba(99,202,255,0.05),
+        0 16px 40px rgba(0,0,0,0.45);
+    margin-bottom:1rem;
+}
+#video {
+    width:100%; display:block;
+    transform:scaleX(-1);
+    filter:contrast(1.08) brightness(1.05);
+}
+
+/* scanning line */
+.scan-line {
+    position:absolute; left:0; right:0; height:2px;
+    background:linear-gradient(90deg,transparent,#63caff,#a78bfa,#63caff,transparent);
+    box-shadow:0 0 14px rgba(99,202,255,0.65);
+    top:0; animation:scanDown 2.8s ease-in-out infinite;
+    z-index:10;
+}
+@keyframes scanDown{
+    0%  {top:-2px;opacity:0;}
+    5%  {opacity:1;}
+    95% {opacity:1;}
+    100%{top:100%;opacity:0;}
+}
+
+/* corner brackets */
+.cc { position:absolute; width:18px; height:18px; border-color:#63caff; border-style:solid; opacity:0.5; z-index:10; }
+.cc.tl{top:8px;left:8px;  border-width:2px 0 0 2px; border-radius:2px 0 0 0;}
+.cc.tr{top:8px;right:8px; border-width:2px 2px 0 0; border-radius:0 2px 0 0;}
+.cc.bl{bottom:8px;left:8px;  border-width:0 0 2px 2px; border-radius:0 0 0 2px;}
+.cc.br{bottom:8px;right:8px; border-width:0 2px 2px 0; border-radius:0 0 2px 0;}
+
+/* face target oval */
+.face-oval {
+    position:absolute; left:50%; top:50%;
+    transform:translate(-50%,-50%);
+    width:42%; padding-bottom:52%;
+    border:2px solid rgba(99,202,255,0.35);
+    border-radius:50% / 44%;
+    z-index:9;
+    transition:border-color 0.4s, box-shadow 0.4s;
+}
+.face-oval.detected {
+    border-color:rgba(52,211,153,0.7);
+    box-shadow:0 0 20px rgba(52,211,153,0.25);
+}
+
+/* status row */
+.status-row {
+    display:flex; align-items:center; gap:0.5rem;
+    font-family:'Space Mono',monospace;
+    font-size:0.72rem; color:rgba(241,245,249,0.5);
+    margin-bottom:1.3rem;
+}
+.s-dot {
+    width:7px; height:7px; border-radius:50%;
+    background:#fbbf24; box-shadow:0 0 6px #fbbf24;
+    transition:background 0.4s, box-shadow 0.4s;
+    animation:blink 1.5s ease infinite;
+}
+.s-dot.live   { background:#34d399; box-shadow:0 0 8px #34d399; }
+.s-dot.error  { background:#f87171; box-shadow:0 0 8px #f87171; }
+
+/* camera denied */
+.cam-denied {
+    display:none; align-items:center; justify-content:center;
+    gap:0.6rem; padding:1.5rem;
+    background:rgba(248,113,113,0.07);
+    border:1px solid rgba(248,113,113,0.2);
+    border-radius:10px; margin-bottom:1rem;
+    font-family:'Space Mono',monospace; font-size:0.76rem; color:#f87171;
+}
+.cam-denied.show { display:flex; }
+
+/* flash alerts */
+.flash-alert {
+    padding:0.7rem 0.9rem; border-radius:10px;
+    font-size:0.83rem; margin-bottom:1rem;
+    display:flex; align-items:center; gap:0.55rem;
+    animation:fadeUp 0.4s cubic-bezier(0.16,1,0.3,1);
+}
+.flash-alert.danger {
+    background:rgba(248,113,113,0.09);
+    border:1px solid rgba(248,113,113,0.25);
+    border-left:3px solid #f87171;
+}
+.flash-alert.success {
+    background:rgba(52,211,153,0.09);
+    border:1px solid rgba(52,211,153,0.22);
+    border-left:3px solid #34d399;
+}
+@keyframes fadeUp{from{opacity:0;transform:translateY(-8px);}to{opacity:1;transform:translateY(0);}}
+
+/* auth button */
+.btn-auth {
+    width:100%; padding:0.9rem; border:none; border-radius:10px;
+    background:linear-gradient(135deg,#63caff,#a78bfa);
+    color:#05070f;
+    font-family:'Space Mono',monospace;
+    font-size:0.85rem; font-weight:700; letter-spacing:0.05em;
+    cursor:pointer; transition:opacity 0.2s, transform 0.2s;
+    position:relative; overflow:hidden;
+    margin-bottom:0.75rem;
+}
+.btn-auth::after {
+    content:''; position:absolute; inset:0;
+    background:linear-gradient(135deg,transparent 40%,rgba(255,255,255,0.18));
+    opacity:0; transition:opacity 0.3s;
+}
+.btn-auth:hover { opacity:0.9; transform:translateY(-1px); }
+.btn-auth:hover::after { opacity:1; }
+.btn-auth:disabled { opacity:0.35; cursor:not-allowed; transform:none; }
+
+.cancel-link {
+    display:block; text-align:center;
+    font-family:'Space Mono',monospace; font-size:0.76rem;
+    color:rgba(241,245,249,0.35); text-decoration:none;
+    transition:color 0.2s;
+}
+.cancel-link:hover { color:#63caff; }
+
+/* feature pills */
+.bio-features {
+    display:flex; gap:0.5rem; justify-content:center;
+    flex-wrap:wrap; margin:1.3rem 0 0;
+}
+.bio-feat {
+    display:flex; align-items:center; gap:0.35rem;
+    padding:0.28rem 0.7rem; border-radius:999px;
+    border:1px solid rgba(255,255,255,0.07);
+    font-family:'Space Mono',monospace;
+    font-size:0.67rem; color:rgba(241,245,249,0.4);
+}
+.bio-feat i { color:#63caff; font-size:0.68rem; }
+
+    /* ══ PAGE TRANSITIONS ══ */
+    #page-overlay {
+        position: fixed; inset: 0; z-index: 99998;
+        background: #05070f;
+        opacity: 0; pointer-events: none;
+        transition: opacity 0.28s ease;
+    }
+    #page-overlay.active { opacity: 1; pointer-events: all; }
+    body { animation: hbaPageIn 0.35s ease both; }
+    @keyframes hbaPageIn {
+        from { opacity: 0; transform: translateY(6px); }
+        to   { opacity: 1; transform: translateY(0); }
+    }
+</style>
+
+<div class="bio-wrap">
+    <div class="bio-card">
+        <div class="bio-header">
+            <div class="bio-eyebrow">
+                <span class="e-dot"></span>
+                Biometric Verification
+            </div>
+            <h2 class="bio-title">Identity Check</h2>
+            <p class="bio-sub">STEP 2 OF 2 — FACIAL AUTHENTICATION</p>
+        </div>
+
+        <!-- Progress -->
+        <div class="step-row">
+            <div class="step done"></div>
+            <div class="step active"></div>
+        </div>
+
+        <!-- Camera frame -->
+        <div class="cam-wrap">
+            <div class="scan-line"></div>
+            <div class="cc tl"></div>
+            <div class="cc tr"></div>
+            <div class="cc bl"></div>
+            <div class="cc br"></div>
+            <div class="face-oval" id="faceOval"></div>
+            <video id="video" autoplay playsinline></video>
+        </div>
+
+        <!-- Status -->
+        <div class="status-row">
+            <span class="s-dot" id="sDot"></span>
+            <span id="sLabel">Initialising camera…</span>
+        </div>
+
+        <!-- Camera denied -->
+        <div class="cam-denied" id="camDenied">
+            <i class="fa-solid fa-camera-slash"></i>
+            Please allow camera access to continue
+        </div>
+
+        <!-- Flash messages -->
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            {% for category, message in messages %}
+              <div class="flash-alert {{ category }}">
+                <i class="fa-solid fa-{{ 'circle-check' if category == 'success' else 'circle-exclamation' }}"></i>
+                {{ message }}
+              </div>
+            {% endfor %}
+          {% endif %}
+        {% endwith %}
+
+        <!-- Form -->
+        <form method="POST" id="bioForm">
+            <input type="hidden" name="image" id="image_data">
+            <button type="submit" class="btn-auth" id="authBtn" disabled>
+                <i class="fa-solid fa-fingerprint me-2"></i>Authenticate Identity
+            </button>
+        </form>
+
+        <a href="{{ url_for('logout') }}" class="cancel-link">← Cancel &amp; return to login</a>
+
+        <div class="bio-features">
+            <div class="bio-feat"><i class="fa-solid fa-shield"></i> Liveness Detection</div>
+            <div class="bio-feat"><i class="fa-solid fa-chart-line"></i> LBPH Analysis</div>
+            <div class="bio-feat"><i class="fa-solid fa-lock"></i> Anti-Spoofing</div>
+        </div>
+    </div>
+</div>
+
+<canvas id="canvas" width="320" height="240" style="display:none;"></canvas>
+
+<script>
+    const video    = document.getElementById('video');
+    const canvas   = document.getElementById('canvas');
+    const imgIn    = document.getElementById('image_data');
+    const authBtn  = document.getElementById('authBtn');
+    const sDot     = document.getElementById('sDot');
+    const sLabel   = document.getElementById('sLabel');
+    const camDenied= document.getElementById('camDenied');
+    const faceOval = document.getElementById('faceOval');
+    const form     = document.getElementById('bioForm');
+
+    async function initCam() {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({
+                video:{ width:{ideal:640}, height:{ideal:480}, facingMode:'user' }
+            });
+            video.srcObject = stream;
+            video.onplaying = () => {
+                sDot.classList.add('live');
+                sLabel.textContent = 'Camera active — position your face in the oval';
+                authBtn.disabled = false;
+                simulateScan();
+            };
+        } catch(e) {
+            sDot.classList.add('error');
+            sLabel.textContent = 'Camera access denied';
+            camDenied.classList.add('show');
+        }
+    }
+
+    function simulateScan() {
+        setInterval(() => {
+            const detected = Math.random() > 0.4;
+            if(detected) {
+                faceOval.classList.add('detected');
+                sDot.classList.add('live');
+                sLabel.textContent = 'Face detected — ready to authenticate';
+            } else {
+                faceOval.classList.remove('detected');
+                sLabel.textContent = 'Scanning… keep face centred';
+            }
+        }, 2200);
+    }
+
+    // Auto-capture on submit
+    form.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        authBtn.disabled = true;
+        authBtn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin me-2"></i>Processing…';
+        canvas.width = 320; canvas.height = 240;
+        canvas.getContext('2d').drawImage(video, 0, 0, 320, 240);
+        imgIn.value = canvas.toDataURL('image/jpeg', 0.7);
+        setTimeout(() => form.submit(), 400);
+    });
+
+    // keyboard
+    document.addEventListener('keypress', e => { if(e.key==='Enter') authBtn.click(); });
+
+    // cleanup
+    window.addEventListener('beforeunload', () => {
+        video.srcObject?.getTracks().forEach(t=>t.stop());
+    });
+
+    initCam();
+</script>
+
+    <!-- ══ PAGE TRANSITION OVERLAY ══ -->
+    <div id="page-overlay"></div>
+    <script>
+    (function() {
+        var overlay = document.getElementById('page-overlay');
+
+        document.addEventListener('click', function(e) {
+            var a = e.target.closest('a[href]');
+            if (!a) return;
+            var href = a.getAttribute('href');
+            /* Skip: empty, hash anchors, javascript:, external/blank targets, form submits */
+            if (!href || href === '#' || href.startsWith('#') ||
+                href.startsWith('javascript') || a.target === '_blank') return;
+            e.preventDefault();
+            overlay.classList.add('active');
+            setTimeout(function() { window.location.href = href; }, 260);
+        });
+
+        /* Instantly clear overlay when browser navigates back/forward */
+        window.addEventListener('pageshow', function(e) {
+            overlay.classList.remove('active');
+            document.body.style.animation = 'none';
+            void document.body.offsetHeight; /* reflow */
+            document.body.style.animation = '';
+        });
+    })();
+    </script>
+{% endblock %}

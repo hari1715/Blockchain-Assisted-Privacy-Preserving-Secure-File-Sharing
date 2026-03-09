@@ -1,0 +1,422 @@
+{% extends "layout.html" %}
+{% block title %}Register | HBA Vault{% endblock %}
+
+{% block content %}
+<style>
+/* ══════════════════════════════════════════
+   REGISTER PAGE STYLES — extends layout.html
+══════════════════════════════════════════ */
+.reg-wrap {
+    min-height: 82vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem 0;
+}
+.reg-card {
+    width: 100%; max-width: 820px;
+    background: rgba(9,13,26,0.72);
+    backdrop-filter: blur(22px);
+    -webkit-backdrop-filter: blur(22px);
+    border: 1px solid rgba(99,202,255,0.16);
+    border-radius: 24px;
+    overflow: hidden;
+    box-shadow:
+        0 0 0 1px rgba(99,202,255,0.06),
+        0 40px 80px rgba(0,0,0,0.55);
+    animation: cardIn 0.6s cubic-bezier(0.16,1,0.3,1) both;
+    position: relative;
+}
+.reg-card::before {
+    content:'';
+    position:absolute; top:0; left:10%; right:10%; height:1px;
+    background: linear-gradient(90deg, transparent, rgba(99,202,255,0.5), transparent);
+}
+@keyframes cardIn {
+    from { opacity:0; transform:translateY(24px) scale(0.98); }
+    to   { opacity:1; transform:translateY(0)    scale(1);    }
+}
+
+.reg-body {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    min-height: 560px;
+}
+
+/* Left column — form */
+.reg-form-col {
+    padding: 2.4rem 2rem 2.4rem 2.4rem;
+    border-right: 1px solid rgba(255,255,255,0.07);
+}
+
+/* Right column — camera */
+.reg-cam-col {
+    padding: 2.4rem 2.4rem 2.4rem 2rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: rgba(99,202,255,0.02);
+}
+
+.reg-header { margin-bottom: 1.8rem; }
+.reg-header .page-tag {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.68rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: rgba(99,202,255,0.7);
+    margin-bottom: 0.4rem;
+}
+.reg-header h2 {
+    font-size: 1.55rem;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+}
+
+.f-label {
+    display:block;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.68rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: rgba(241,245,249,0.5);
+    margin-bottom: 0.35rem;
+}
+
+.input-wrap-reg {
+    position: relative;
+    margin-bottom: 1rem;
+}
+.input-wrap-reg .i-icon {
+    position:absolute; left:0.85rem; top:50%;
+    transform:translateY(-50%);
+    color:rgba(241,245,249,0.25);
+    font-size:0.78rem; pointer-events:none;
+}
+.input-wrap-reg input,
+.input-wrap-reg select {
+    width:100%;
+    padding:0.7rem 1rem 0.7rem 2.4rem;
+    background:rgba(255,255,255,0.04);
+    border:1px solid rgba(255,255,255,0.08);
+    border-radius:10px;
+    color:#f1f5f9;
+    font-family:'Space Mono',monospace;
+    font-size:0.83rem;
+    outline:none;
+    transition:border-color 0.2s, box-shadow 0.2s;
+    -webkit-appearance:none;
+    appearance:none;
+}
+.input-wrap-reg input:focus,
+.input-wrap-reg select:focus {
+    border-color: rgba(99,202,255,0.5);
+    box-shadow: 0 0 0 3px rgba(99,202,255,0.1);
+    background: rgba(99,202,255,0.04);
+}
+.input-wrap-reg input::placeholder { color:rgba(241,245,249,0.25); }
+.input-wrap-reg select option { background:#0d1122; }
+.input-wrap-reg .select-arrow {
+    position:absolute; right:0.85rem; top:50%;
+    transform:translateY(-50%);
+    color:rgba(241,245,249,0.3); pointer-events:none;
+    font-size:0.75rem;
+}
+
+/* Register CTA button */
+.btn-reg {
+    width:100%; padding:0.85rem;
+    border:none; border-radius:10px;
+    background:linear-gradient(135deg, #63caff, #a78bfa);
+    color:#05070f;
+    font-family:'Space Mono',monospace;
+    font-size:0.84rem; font-weight:700;
+    letter-spacing:0.05em; cursor:pointer;
+    transition:opacity 0.2s, transform 0.2s;
+    margin-top:0.5rem;
+    position:relative; overflow:hidden;
+}
+.btn-reg::after {
+    content:'';
+    position:absolute; inset:0;
+    background:linear-gradient(135deg,transparent 40%,rgba(255,255,255,0.18));
+    opacity:0; transition:opacity 0.3s;
+}
+.btn-reg:hover { opacity:0.9; transform:translateY(-1px); }
+.btn-reg:hover::after { opacity:1; }
+.btn-reg:disabled { opacity:0.35; cursor:not-allowed; transform:none; }
+
+.login-cta {
+    text-align:center; margin-top:1rem;
+    font-family:'Space Mono',monospace; font-size:0.77rem;
+    color:rgba(241,245,249,0.45);
+}
+.login-cta a { color:#63caff; text-decoration:none; transition:color 0.2s; }
+.login-cta a:hover { color:#a78bfa; }
+
+/* ── Camera panel ── */
+.cam-label {
+    font-family:'Space Mono',monospace;
+    font-size:0.68rem; letter-spacing:0.12em;
+    text-transform:uppercase; color:rgba(99,202,255,0.7);
+    margin-bottom:1rem;
+    display:flex; align-items:center; gap:0.5rem;
+}
+.cam-label::before, .cam-label::after {
+    content:''; flex:1; height:1px;
+    background:rgba(99,202,255,0.15);
+}
+
+.cam-frame {
+    position:relative; width:100%;
+    border-radius:16px; overflow:hidden;
+    border:1px solid rgba(99,202,255,0.2);
+    box-shadow:
+        0 0 0 4px rgba(99,202,255,0.05),
+        0 16px 40px rgba(0,0,0,0.4);
+    background:#000;
+}
+#video {
+    width:100%; display:block;
+    border-radius:16px;
+}
+
+/* scanning line */
+.scan-line {
+    position:absolute; left:0; right:0; height:2px;
+    background:linear-gradient(90deg,transparent,#63caff,transparent);
+    box-shadow: 0 0 12px rgba(99,202,255,0.6);
+    top:0; animation:scanDown 2.8s ease-in-out infinite;
+}
+@keyframes scanDown {
+    0%  { top:-2px; opacity:0; }
+    5%  { opacity:1; }
+    95% { opacity:1; }
+    100%{ top:100%; opacity:0; }
+}
+
+/* corner brackets */
+.cam-corner {
+    position:absolute; width:20px; height:20px;
+    border-color:#63caff; border-style:solid; opacity:0.5;
+}
+.cam-corner.tl { top:8px; left:8px;  border-width:2px 0 0 2px; border-radius:2px 0 0 0; }
+.cam-corner.tr { top:8px; right:8px; border-width:2px 2px 0 0; border-radius:0 2px 0 0; }
+.cam-corner.bl { bottom:8px; left:8px;  border-width:0 0 2px 2px; border-radius:0 0 0 2px; }
+.cam-corner.br { bottom:8px; right:8px; border-width:0 2px 2px 0; border-radius:0 0 2px 0; }
+
+/* status pill */
+.cam-status {
+    display:flex; align-items:center; gap:0.5rem;
+    margin-top:0.75rem;
+    font-family:'Space Mono',monospace;
+    font-size:0.72rem; color:rgba(241,245,249,0.5);
+}
+.cam-status .status-dot {
+    width:7px; height:7px; border-radius:50%;
+    background:#fbbf24;
+    box-shadow: 0 0 6px #fbbf24;
+    animation: blink 1.5s ease infinite;
+    transition: background 0.4s, box-shadow 0.4s;
+}
+.cam-status .status-dot.live {
+    background:#34d399;
+    box-shadow: 0 0 8px #34d399;
+}
+@keyframes blink { 0%,100%{opacity:1;} 50%{opacity:0.35;} }
+
+/* capture button */
+.btn-capture {
+    width:100%; margin-top:1rem;
+    padding:0.72rem;
+    border:1px solid rgba(99,202,255,0.35);
+    border-radius:10px;
+    background:rgba(99,202,255,0.08);
+    color:#63caff;
+    font-family:'Space Mono',monospace;
+    font-size:0.8rem; cursor:pointer;
+    transition:background 0.2s, border-color 0.2s;
+}
+.btn-capture:hover {
+    background:rgba(99,202,255,0.16);
+    border-color:rgba(99,202,255,0.6);
+}
+
+.capture-confirm {
+    margin-top:0.6rem;
+    font-family:'Space Mono',monospace;
+    font-size:0.75rem;
+    text-align:center;
+    color:rgba(241,245,249,0.4);
+    min-height:1.2em;
+    transition:color 0.3s;
+}
+.capture-confirm.ok { color:#34d399; }
+.capture-confirm.err { color:#f87171; }
+
+canvas { display:none; }
+
+/* Responsive */
+@media (max-width: 640px) {
+    .reg-body { grid-template-columns:1fr; }
+    .reg-form-col { border-right:none; border-bottom:1px solid rgba(255,255,255,0.07); }
+}
+
+    /* ══ PAGE TRANSITIONS ══ */
+    #page-overlay {
+        position: fixed; inset: 0; z-index: 99998;
+        background: #05070f;
+        opacity: 0; pointer-events: none;
+        transition: opacity 0.28s ease;
+    }
+    #page-overlay.active { opacity: 1; pointer-events: all; }
+    body { animation: hbaPageIn 0.35s ease both; }
+    @keyframes hbaPageIn {
+        from { opacity: 0; transform: translateY(6px); }
+        to   { opacity: 1; transform: translateY(0); }
+    }
+</style>
+
+<div class="reg-wrap">
+    <div class="reg-card">
+        <div class="reg-body">
+
+            <!-- ── Form column ── -->
+            <div class="reg-form-col">
+                <div class="reg-header">
+                    <div class="page-tag">New Node Registration</div>
+                    <h2>Create Account</h2>
+                </div>
+
+                <form action="/register" method="POST" id="regForm">
+                    <input type="hidden" name="face_data" id="face_data">
+
+                    <label class="f-label">Username</label>
+                    <div class="input-wrap-reg">
+                        <i class="fa-regular fa-user i-icon"></i>
+                        <input type="text" name="username" placeholder="unique node ID" required>
+                    </div>
+
+                    <label class="f-label">Email</label>
+                    <div class="input-wrap-reg">
+                        <i class="fa-regular fa-envelope i-icon"></i>
+                        <input type="email" name="email" placeholder="for OTP delivery" required>
+                    </div>
+
+                    <label class="f-label">Password</label>
+                    <div class="input-wrap-reg">
+                        <i class="fa-solid fa-lock i-icon"></i>
+                        <input type="password" name="password" placeholder="strong passphrase" required>
+                    </div>
+
+                    <label class="f-label">Role</label>
+                    <div class="input-wrap-reg">
+                        <i class="fa-solid fa-user-tag i-icon"></i>
+                        <select name="role">
+                            <option value="sender">Sender — Upload files</option>
+                            <option value="receiver">Receiver — Download files</option>
+                        </select>
+                        <i class="fa-solid fa-chevron-down select-arrow"></i>
+                    </div>
+
+                    <button type="submit" class="btn-reg" id="submitBtn" disabled>
+                        <i class="fa-solid fa-check me-2"></i>Create Account
+                    </button>
+                </form>
+
+                <div class="login-cta">
+                    Already registered? <a href="/login">← Login</a>
+                </div>
+            </div>
+
+            <!-- ── Camera column ── -->
+            <div class="reg-cam-col">
+                <div class="cam-label">Biometric Enrolment</div>
+
+                <div class="cam-frame">
+                    <div class="scan-line"></div>
+                    <div class="cam-corner tl"></div>
+                    <div class="cam-corner tr"></div>
+                    <div class="cam-corner bl"></div>
+                    <div class="cam-corner br"></div>
+                    <video id="video" autoplay playsinline></video>
+                    <canvas id="canvas" width="320" height="240"></canvas>
+                </div>
+
+                <div class="cam-status">
+                    <span class="status-dot" id="statusDot"></span>
+                    <span id="statusLabel">Initialising camera…</span>
+                </div>
+
+                <button class="btn-capture" type="button" onclick="captureFace()">
+                    <i class="fa-solid fa-camera me-2"></i>Capture Face
+                </button>
+
+                <div class="capture-confirm" id="captureMsg">Face capture required to register</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const video  = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    const faceIn = document.getElementById('face_data');
+    const submitBtn = document.getElementById('submitBtn');
+    const statusDot = document.getElementById('statusDot');
+    const statusLabel = document.getElementById('statusLabel');
+    const captureMsg = document.getElementById('captureMsg');
+
+    navigator.mediaDevices.getUserMedia({ video:true })
+        .then(stream => {
+            video.srcObject = stream;
+            statusDot.classList.add('live');
+            statusLabel.textContent = 'Camera active — position face in frame';
+        })
+        .catch(() => {
+            statusLabel.textContent = 'Camera access denied';
+            captureMsg.textContent = 'Please allow camera access';
+            captureMsg.className = 'capture-confirm err';
+        });
+
+    function captureFace() {
+        const ctx = canvas.getContext('2d');
+        canvas.width = 320; canvas.height = 240;
+        ctx.drawImage(video, 0, 0, 320, 240);
+        faceIn.value = canvas.toDataURL('image/jpeg');
+
+        captureMsg.textContent = '✓ Face data secured — ready to register';
+        captureMsg.className = 'capture-confirm ok';
+        submitBtn.disabled = false;
+    }
+</script>
+
+    <!-- ══ PAGE TRANSITION OVERLAY ══ -->
+    <div id="page-overlay"></div>
+    <script>
+    (function() {
+        var overlay = document.getElementById('page-overlay');
+
+        document.addEventListener('click', function(e) {
+            var a = e.target.closest('a[href]');
+            if (!a) return;
+            var href = a.getAttribute('href');
+            /* Skip: empty, hash anchors, javascript:, external/blank targets, form submits */
+            if (!href || href === '#' || href.startsWith('#') ||
+                href.startsWith('javascript') || a.target === '_blank') return;
+            e.preventDefault();
+            overlay.classList.add('active');
+            setTimeout(function() { window.location.href = href; }, 260);
+        });
+
+        /* Instantly clear overlay when browser navigates back/forward */
+        window.addEventListener('pageshow', function(e) {
+            overlay.classList.remove('active');
+            document.body.style.animation = 'none';
+            void document.body.offsetHeight; /* reflow */
+            document.body.style.animation = '';
+        });
+    })();
+    </script>
+{% endblock %}

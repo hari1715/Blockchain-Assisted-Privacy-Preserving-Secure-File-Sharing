@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <link rel="icon" type="image/png" href="/static/logo.png">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login | HBA Vault</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+
+    <style>
+        /* ══════════════════════════════
+           LOGIN PAGE — HBA Vault v2
+        ══════════════════════════════ */
+        :root {
+            --c-bg:      #05070f;
+            --c-cyan:    #63caff;
+            --c-violet:  #a78bfa;
+            --c-green:   #34d399;
+            --c-red:     #f87171;
+            --c-border:  rgba(255,255,255,0.08);
+            --c-surf:    rgba(255,255,255,0.04);
+            --t-pri:     #f1f5f9;
+            --t-mut:     rgba(241,245,249,0.55);
+            --t-faint:   rgba(241,245,249,0.28);
+            --ease:      cubic-bezier(0.16,1,0.3,1);
+        }
+        *, *::before, *::after { box-sizing: border-box; margin:0; padding:0; }
+
+        body {
+            font-family: 'Syne', sans-serif;
+            background: var(--c-bg);
+            color: var(--t-pri);
+            min-height: 100vh;
+            display: flex; align-items: center; justify-content: center;
+            overflow: hidden;
+            position: relative;
+        }
+
+        /* ── Background layers ── */
+        body::before {
+            content:'';
+            position:fixed; inset:0;
+            background-image:
+                linear-gradient(rgba(99,202,255,0.04) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(99,202,255,0.04) 1px, transparent 1px);
+            background-size: 44px 44px;
+            pointer-events:none; z-index:0;
+            animation: gridDrift 25s linear infinite;
+        }
+        @keyframes gridDrift { from{transform:translate(0,0);} to{transform:translate(44px,44px);} }
+
+        .orb-left {
+            position:fixed; top:-20%; left:-15%;
+            width:60vw; height:60vw;
+            background: radial-gradient(circle, rgba(99,202,255,0.09) 0%, transparent 65%);
+            pointer-events:none; z-index:0;
+            animation: orbFloat 16s ease-in-out infinite alternate;
+        }
+        .orb-right {
+            position:fixed; bottom:-20%; right:-10%;
+            width:50vw; height:50vw;
+            background: radial-gradient(circle, rgba(167,139,250,0.08) 0%, transparent 65%);
+            pointer-events:none; z-index:0;
+            animation: orbFloat 20s ease-in-out infinite alternate-reverse;
+        }
+        @keyframes orbFloat {
+            from {transform:translate(0,0) scale(1);}
+            to   {transform:translate(30px,20px) scale(1.08);}
+        }
+
+        .particle {
+            position:fixed; width:2px; height:2px;
+            background:var(--c-cyan); border-radius:50%;
+            pointer-events:none; opacity:0; z-index:0;
+            animation:particleRise linear infinite;
+        }
+        @keyframes particleRise {
+            0%   {transform:translateY(105vh);opacity:0;}
+            8%   {opacity:0.4;}
+            92%  {opacity:0.4;}
+            100% {transform:translateY(-5vh);opacity:0;}
+        }
+
+        /* ── Page layout ── */
+        .page-wrap {
+            position:relative; z-index:10;
+            width:100%; display:flex;
+            align-items:center; justify-content:center;
+            min-height:100vh; padding:2rem;
+        }
+
+        /* ── Login card ── */
+        .login-card {
+            width:100%; max-width:440px;
+            background: rgba(9,13,26,0.75);
+            backdrop-filter: blur(24px);
+            -webkit-backdrop-filter: blur(24px);
+            border: 1px solid rgba(99,202,255,0.18);
+            border-radius: 24px;
+            padding: 2.8rem 2.4rem;
+            box-shadow:
+                0 0 0 1px rgba(99,202,255,0.06),
+                0 40px 80px rgba(0,0,0,0.55),
+                inset 0 1px 0 rgba(255,255,255,0.06);
+            animation: cardIn 0.65s var(--ease) both;
+            position: relative;
+            overflow: hidden;
+        }
+        /* top shimmer line */
+        .login-card::before {
+            content:'';
+            position:absolute; top:0; left:10%; right:10%; height:1px;
+            background: linear-gradient(90deg, transparent, rgba(99,202,255,0.6), transparent);
+        }
+        @keyframes cardIn {
+            from { opacity:0; transform:translateY(28px) scale(0.97); }
+            to   { opacity:1; transform:translateY(0)    scale(1);    }
+        }
+
+        /* ── Icon header ── */
+        .auth-icon {
+            width:60px; height:60px; margin:0 auto 1.4rem;
+            border-radius:16px;
+            background: linear-gradient(135deg, rgba(99,202,255,0.15), rgba(167,139,250,0.15));
+            border: 1px solid rgba(99,202,255,0.25);
+            display:flex; align-items:center; justify-content:center;
+            font-size:1.6rem;
+            box-shadow: 0 0 24px rgba(99,202,255,0.15);
+            animation: iconPulse 3s ease infinite;
+        }
+        @keyframes iconPulse {
+            0%,100%{box-shadow:0 0 24px rgba(99,202,255,0.15);}
+            50%    {box-shadow:0 0 40px rgba(99,202,255,0.30);}
+        }
+
+        .auth-title {
+            font-size:1.55rem; font-weight:800;
+            letter-spacing:-0.02em;
+            margin-bottom:0.3rem; text-align:center;
+        }
+        .auth-sub {
+            font-family:'Space Mono',monospace;
+            font-size:0.72rem; color:var(--t-mut);
+            letter-spacing:0.08em; text-align:center;
+            margin-bottom:2rem;
+        }
+
+        /* ── Step indicator ── */
+        .step-row {
+            display:flex; gap:0.4rem; justify-content:center;
+            margin-bottom:1.8rem;
+        }
+        .step {
+            height:3px; border-radius:2px;
+            background:rgba(255,255,255,0.1);
+            flex:1;
+            transition:background 0.3s;
+        }
+        .step.active { background:var(--c-cyan); }
+
+        /* ── Flash alerts ── */
+        .flash-alert {
+            background: rgba(248,113,113,0.1);
+            border:1px solid rgba(248,113,113,0.3);
+            border-left:3px solid var(--c-red);
+            border-radius:10px;
+            padding:0.75rem 1rem;
+            font-size:0.84rem; color:var(--t-pri);
+            margin-bottom:1.2rem;
+            display:flex; align-items:center; gap:0.6rem;
+            animation: fadeUp 0.4s var(--ease);
+        }
+        @keyframes fadeUp { from{opacity:0;transform:translateY(-8px);} to{opacity:1;transform:translateY(0);} }
+
+        /* ── Form labels ── */
+        .f-label {
+            display:block;
+            font-family:'Space Mono',monospace;
+            font-size:0.7rem; letter-spacing:0.1em;
+            text-transform:uppercase; color:var(--t-mut);
+            margin-bottom:0.4rem;
+        }
+
+        /* ── Input group ── */
+        .input-wrap { position:relative; margin-bottom:1.1rem; }
+        .input-icon {
+            position:absolute; left:0.9rem; top:50%;
+            transform:translateY(-50%);
+            color:var(--t-faint); font-size:0.82rem; pointer-events:none;
+        }
+        .input-wrap input {
+            width:100%;
+            padding:0.75rem 1rem 0.75rem 2.5rem;
+            background:rgba(255,255,255,0.04);
+            border:1px solid var(--c-border);
+            border-radius:10px;
+            color:var(--t-pri);
+            font-family:'Space Mono',monospace;
+            font-size:0.87rem;
+            transition:border-color 0.2s, box-shadow 0.2s;
+            outline:none;
+        }
+        .input-wrap input:focus {
+            border-color: rgba(99,202,255,0.5);
+            box-shadow: 0 0 0 3px rgba(99,202,255,0.1);
+            background: rgba(99,202,255,0.04);
+        }
+        .input-wrap input::placeholder { color:var(--t-faint); }
+
+        /* pw toggle */
+        .pw-toggle {
+            position:absolute; right:0.9rem; top:50%;
+            transform:translateY(-50%);
+            color:var(--t-faint); cursor:pointer; font-size:0.82rem;
+            transition:color 0.2s;
+        }
+        .pw-toggle:hover { color:var(--c-cyan); }
+
+        /* strength bar */
+        .pw-strength { display:flex; gap:4px; margin-top:6px; }
+        .pw-strength span {
+            flex:1; height:3px; border-radius:2px;
+            background:rgba(255,255,255,0.08);
+            transition:background 0.3s;
+        }
+        .pw-strength span.s1{background:#f87171;}
+        .pw-strength span.s2{background:#fbbf24;}
+        .pw-strength span.s3{background:#34d399;}
+        .pw-strength span.s4{background:var(--c-cyan);}
+
+        /* ── Submit button ── */
+        .btn-login {
+            width:100%; padding:0.85rem;
+            border:none; border-radius:10px;
+            background:linear-gradient(135deg,var(--c-cyan),var(--c-violet));
+            color:#05070f;
+            font-family:'Space Mono',monospace;
+            font-size:0.85rem; font-weight:700;
+            letter-spacing:0.05em; cursor:pointer;
+            position:relative; overflow:hidden;
+            transition:opacity 0.2s, transform 0.2s;
+            margin-top:0.6rem;
+        }
+        .btn-login:hover { opacity:0.9; transform:translateY(-1px); }
+        .btn-login:active { transform:translateY(0); }
+        .btn-login .btn-shimmer {
+            position:absolute; inset:0;
+            background:linear-gradient(135deg,transparent 40%,rgba(255,255,255,0.18));
+            opacity:0; transition:opacity 0.3s;
+        }
+        .btn-login:hover .btn-shimmer { opacity:1; }
+
+        /* ── Footer link ── */
+        .register-link {
+            display:block; text-align:center; margin-top:1.4rem;
+            font-family:'Space Mono',monospace; font-size:0.78rem;
+            color:var(--t-mut);
+        }
+        .register-link a { color:var(--c-cyan); text-decoration:none; transition:color 0.2s; }
+        .register-link a:hover { color:var(--c-violet); }
+
+        /* ── Trust badges ── */
+        .trust-badges {
+            display:flex; justify-content:center; gap:0.6rem;
+            flex-wrap:wrap; margin-top:1.8rem;
+        }
+        .trust-badge {
+            display:flex; align-items:center; gap:0.35rem;
+            padding:0.28rem 0.7rem;
+            border:1px solid var(--c-border);
+            border-radius:999px;
+            font-family:'Space Mono',monospace;
+            font-size:0.67rem; color:var(--t-faint);
+        }
+        .trust-badge i { color:var(--c-cyan); font-size:0.7rem; }
+    </style>
+</head>
+<body>
+    <div class="orb-left"></div>
+    <div class="orb-right"></div>
+    <div id="particles"></div>
+
+    <script>
+        (function(){
+            const c=document.getElementById('particles');
+            for(let i=0;i<35;i++){
+                const p=document.createElement('div');
+                p.className='particle';
+                p.style.cssText=`left:${Math.random()*100}%;animation-delay:${Math.random()*18}s;animation-duration:${12+Math.random()*12}s;`;
+                c.appendChild(p);
+            }
+        })();
+    </script>
+
+    <div class="page-wrap">
+        <div class="login-card">
+            <!-- Icon -->
+            <div class="auth-icon"><img src="{{ url_for('static', filename='logo.png') }}" alt="HBA Vault" style="width:60%;height:60%;object-fit:contain;"></div>
+
+            <h2 class="auth-title">Secure Login</h2>
+            <p class="auth-sub">STEP 1 OF 2 — IDENTITY AUTHENTICATION</p>
+
+            <!-- Progress steps -->
+            <div class="step-row">
+                <div class="step active"></div>
+                <div class="step"></div>
+            </div>
+
+            <!-- Flash messages — errors shown inline, success shown as modal -->
+            {% with messages = get_flashed_messages() %}
+              {% if messages %}
+                {% for message in messages %}
+                  {% if 'successful' in message.lower() or 'success' in message.lower() %}
+                    <!-- SUCCESS MODAL (shown via JS below) -->
+                    <div id="successModal" data-message="{{ message }}"></div>
+                  {% else %}
+                    <div class="flash-alert">
+                      <i class="fa-solid fa-triangle-exclamation"></i>
+                      {{ message }}
+                    </div>
+                  {% endif %}
+                {% endfor %}
+              {% endif %}
+            {% endwith %}
+
+            <!-- Login form -->
+            <form method="POST">
+                <label class="f-label">Username</label>
+                <div class="input-wrap">
+                    <i class="fa-regular fa-user input-icon"></i>
+                    <input type="text" name="username" placeholder="your node ID" required autocomplete="username">
+                </div>
+
+                <label class="f-label">Password</label>
+                <div class="input-wrap">
+                    <i class="fa-solid fa-lock input-icon"></i>
+                    <input type="password" name="password" id="pw" placeholder="••••••••" required autocomplete="current-password">
+                    <span class="pw-toggle" onclick="togglePw(this)">
+                        <i class="fa-regular fa-eye"></i>
+                    </span>
+                </div>
+                <div class="pw-strength" id="pwStrength">
+                    <span></span><span></span><span></span><span></span>
+                </div>
+
+                <button type="submit" class="btn-login" id="loginBtn">
+                    <span class="btn-shimmer"></span>
+                    <i class="fa-solid fa-arrow-right-to-bracket me-2"></i>Verify Credentials
+                </button>
+            </form>
+
+            <div class="register-link">
+                New here? <a href="{{ url_for('register') }}">Create account →</a>
+            </div>
+
+            <div class="trust-badges">
+                <div class="trust-badge"><i class="fa-solid fa-shield-halved"></i> 256-bit SSL</div>
+                <div class="trust-badge"><i class="fa-solid fa-fingerprint"></i> Biometric</div>
+                <div class="trust-badge"><i class="fa-solid fa-link"></i> Blockchain</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ══ SUCCESS MODAL ══ -->
+    <style>
+        .modal-overlay {
+            position: fixed; inset: 0; z-index: 9999;
+            display: flex; align-items: center; justify-content: center;
+            background: rgba(5,7,15,0.75);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            opacity: 0; pointer-events: none;
+            transition: opacity 0.35s ease;
+        }
+        .modal-overlay.show {
+            opacity: 1; pointer-events: all;
+        }
+        .modal-box {
+            width: 100%; max-width: 380px;
+            background: rgba(9,13,26,0.95);
+            border: 1px solid rgba(52,211,153,0.3);
+            border-radius: 24px;
+            padding: 2.6rem 2rem;
+            text-align: center;
+            position: relative; overflow: hidden;
+            box-shadow:
+                0 0 0 1px rgba(52,211,153,0.08),
+                0 40px 80px rgba(0,0,0,0.6),
+                inset 0 1px 0 rgba(255,255,255,0.05);
+            transform: scale(0.88) translateY(20px);
+            transition: transform 0.45s cubic-bezier(0.16,1,0.3,1);
+        }
+        .modal-overlay.show .modal-box {
+            transform: scale(1) translateY(0);
+        }
+        /* top shimmer */
+        .modal-box::before {
+            content:''; position:absolute;
+            top:0; left:10%; right:10%; height:1px;
+            background:linear-gradient(90deg,transparent,rgba(52,211,153,0.65),transparent);
+        }
+        /* animated ring */
+        .success-ring {
+            width: 80px; height: 80px; border-radius: 50%;
+            margin: 0 auto 1.5rem;
+            background: rgba(52,211,153,0.1);
+            border: 2px solid rgba(52,211,153,0.35);
+            display: flex; align-items: center; justify-content: center;
+            position: relative;
+            animation: ringPulse 2s ease infinite;
+        }
+        @keyframes ringPulse {
+            0%,100% { box-shadow: 0 0 0 0 rgba(52,211,153,0.3); }
+            50%      { box-shadow: 0 0 0 14px rgba(52,211,153,0); }
+        }
+        .success-ring i {
+            font-size: 2rem; color: #34d399;
+            animation: checkBounce 0.5s 0.2s cubic-bezier(0.16,1,0.3,1) both;
+        }
+        @keyframes checkBounce {
+            from { transform: scale(0) rotate(-30deg); opacity:0; }
+            to   { transform: scale(1) rotate(0deg);   opacity:1; }
+        }
+        .modal-title {
+            font-size: 1.4rem; font-weight: 800;
+            letter-spacing: -0.02em; margin-bottom: 0.4rem;
+            color: #f1f5f9;
+        }
+        .modal-msg {
+            font-family: 'Space Mono', monospace;
+            font-size: 0.78rem; color: rgba(241,245,249,0.5);
+            margin-bottom: 1.8rem; line-height: 1.6;
+        }
+        .modal-msg .hi { color: #34d399; }
+        .btn-modal {
+            width: 100%; padding: 0.85rem;
+            border: none; border-radius: 10px;
+            background: linear-gradient(135deg, #34d399, #63caff);
+            color: #05070f;
+            font-family: 'Space Mono', monospace;
+            font-size: 0.84rem; font-weight: 700;
+            letter-spacing: 0.05em; cursor: pointer;
+            transition: opacity 0.2s, transform 0.2s;
+        }
+        .btn-modal:hover { opacity: 0.9; transform: translateY(-1px); }
+
+        /* confetti dots */
+        .confetti-dot {
+            position: absolute; border-radius: 50%;
+            pointer-events: none;
+            animation: confettiFall linear forwards;
+        }
+        @keyframes confettiFall {
+            0%   { transform: translateY(-10px) rotate(0deg); opacity:1; }
+            100% { transform: translateY(120px) rotate(360deg); opacity:0; }
+        }
+    
+    /* ══ PAGE TRANSITIONS ══ */
+    #page-overlay {
+        position: fixed; inset: 0; z-index: 99998;
+        background: #05070f;
+        opacity: 0; pointer-events: none;
+        transition: opacity 0.28s ease;
+    }
+    #page-overlay.active { opacity: 1; pointer-events: all; }
+    body { animation: hbaPageIn 0.35s ease both; }
+    @keyframes hbaPageIn {
+        from { opacity: 0; transform: translateY(6px); }
+        to   { opacity: 1; transform: translateY(0); }
+    }
+</style>
+
+    <div class="modal-overlay" id="modalOverlay">
+        <div class="modal-box" id="modalBox">
+            <div class="success-ring">
+                <i class="fa-solid fa-check"></i>
+            </div>
+            <h2 class="modal-title">Account Created!</h2>
+            <p class="modal-msg" id="modalMsg">
+                <span class="hi">Registration Successful.</span><br>
+                You can now log in with your credentials.
+            </p>
+            <button class="btn-modal" onclick="closeModal()">
+                <i class="fa-solid fa-arrow-right-to-bracket me-2"></i>Continue to Login
+            </button>
+        </div>
+    </div>
+
+    <script>
+        function togglePw(el) {
+            const pw = document.getElementById('pw');
+            const ico = el.querySelector('i');
+            if(pw.type === 'password') {
+                pw.type = 'text';
+                ico.classList.replace('fa-eye','fa-eye-slash');
+            } else {
+                pw.type = 'password';
+                ico.classList.replace('fa-eye-slash','fa-eye');
+            }
+        }
+
+        document.getElementById('pw').addEventListener('input', function(){
+            const bars = document.querySelectorAll('#pwStrength span');
+            const v = this.value;
+            let s = 0;
+            if(v.length > 0) s++;
+            if(v.length > 6) s++;
+            if(v.match(/[A-Z]/)) s++;
+            if(v.match(/[0-9]/)) s++;
+            if(v.match(/[^A-Za-z0-9]/)) s++;
+            bars.forEach((b,i) => {
+                b.className = '';
+                if(i < s) b.classList.add('s'+Math.min(s,4));
+            });
+        });
+
+        document.querySelector('form').addEventListener('submit', function(){
+            const btn = document.getElementById('loginBtn');
+            btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin me-2"></i>Authenticating…';
+            btn.disabled = true;
+        });
+
+        // ── Modal logic ──
+        function closeModal() {
+            document.getElementById('modalOverlay').classList.remove('show');
+        }
+
+        function spawnConfetti(box) {
+            const colors = ['#63caff','#a78bfa','#34d399','#fbbf24','#f87171'];
+            for(let i = 0; i < 22; i++) {
+                const d = document.createElement('div');
+                d.className = 'confetti-dot';
+                const size = 4 + Math.random() * 6;
+                d.style.cssText = `
+                    width:${size}px; height:${size}px;
+                    background:${colors[Math.floor(Math.random()*colors.length)]};
+                    left:${10 + Math.random()*80}%;
+                    top:${10 + Math.random()*30}%;
+                    animation-duration:${0.9 + Math.random()*0.8}s;
+                    animation-delay:${Math.random()*0.4}s;
+                `;
+                box.appendChild(d);
+                setTimeout(() => d.remove(), 2000);
+            }
+        }
+
+        // Show modal if registration was successful
+        window.addEventListener('DOMContentLoaded', () => {
+            const trigger = document.getElementById('successModal');
+            if (trigger) {
+                const overlay = document.getElementById('modalOverlay');
+                overlay.classList.add('show');
+                spawnConfetti(document.getElementById('modalBox'));
+            }
+        });
+    </script>
+
+    <!-- ══ PAGE TRANSITION OVERLAY ══ -->
+    <div id="page-overlay"></div>
+    <script>
+    (function() {
+        var overlay = document.getElementById('page-overlay');
+
+        document.addEventListener('click', function(e) {
+            var a = e.target.closest('a[href]');
+            if (!a) return;
+            var href = a.getAttribute('href');
+            /* Skip: empty, hash anchors, javascript:, external/blank targets, form submits */
+            if (!href || href === '#' || href.startsWith('#') ||
+                href.startsWith('javascript') || a.target === '_blank') return;
+            e.preventDefault();
+            overlay.classList.add('active');
+            setTimeout(function() { window.location.href = href; }, 260);
+        });
+
+        /* Instantly clear overlay when browser navigates back/forward */
+        window.addEventListener('pageshow', function(e) {
+            overlay.classList.remove('active');
+            document.body.style.animation = 'none';
+            void document.body.offsetHeight; /* reflow */
+            document.body.style.animation = '';
+        });
+    })();
+    </script>
+</body>
+</html>

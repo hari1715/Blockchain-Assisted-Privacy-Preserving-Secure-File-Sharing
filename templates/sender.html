@@ -1,0 +1,1293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <link rel="icon" type="image/png" href="/static/logo.png">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sender Dashboard | HBA Vault</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        /* ══════════════════════════════════════
+           SENDER DASHBOARD — HBA Vault v2
+        ══════════════════════════════════════ */
+        :root {
+            --c-bg:     #05070f;
+            --c-surf:   rgba(255,255,255,0.035);
+            --c-surf2:  rgba(255,255,255,0.06);
+            --c-border: rgba(255,255,255,0.08);
+            --c-cyan:   #63caff;
+            --c-violet: #a78bfa;
+            --c-green:  #34d399;
+            --c-red:    #f87171;
+            --c-amber:  #fbbf24;
+            --t-pri:    #f1f5f9;
+            --t-mut:    rgba(241,245,249,0.55);
+            --t-faint:  rgba(241,245,249,0.25);
+            --ease:     cubic-bezier(0.16,1,0.3,1);
+        }
+        *, *::before, *::after { box-sizing:border-box; margin:0; padding:0; }
+
+        body {
+            font-family:'Syne',sans-serif;
+            background:var(--c-bg); color:var(--t-pri);
+            min-height:100vh; overflow-x:hidden; position:relative;
+        }
+        body::before {
+            content:''; position:fixed; inset:0;
+            background-image:
+                linear-gradient(rgba(99,202,255,0.035) 1px,transparent 1px),
+                linear-gradient(90deg,rgba(99,202,255,0.035) 1px,transparent 1px);
+            background-size:44px 44px; pointer-events:none; z-index:0;
+            animation:gridDrift 25s linear infinite;
+        }
+        @keyframes gridDrift { from{transform:translate(0,0);} to{transform:translate(44px,44px);} }
+
+        /* ── Navbar ── */
+        .topbar {
+            position:relative; z-index:100;
+            background:rgba(5,7,15,0.9);
+            backdrop-filter:blur(16px);
+            border-bottom:1px solid var(--c-border);
+            padding:0.85rem 0;
+        }
+        .topbar-inner {
+            max-width:1300px; margin:auto; padding:0 1.5rem;
+            display:flex; align-items:center; gap:1rem;
+        }
+        .brand {
+            font-family:'Space Mono',monospace;
+            font-size:0.95rem; font-weight:700;
+            display:flex; align-items:center; gap:0.55rem;
+            text-decoration:none; color:var(--t-pri);
+        }
+        .brand .icon-box {
+            width:30px; height:30px; border-radius:8px;
+            background:#0d1f3c;overflow:hidden;padding:2px;
+            display:flex; align-items:center; justify-content:center;
+            font-size:0.8rem;
+        }
+        .brand .accent { color:var(--c-cyan); }
+
+        .topbar-right { margin-left:auto; display:flex; align-items:center; gap:0.75rem; }
+
+        .node-pill {
+            display:flex; align-items:center; gap:0.45rem;
+            padding:0.28rem 0.75rem;
+            border:1px solid var(--c-border); border-radius:999px;
+            font-family:'Space Mono',monospace;
+            font-size:0.75rem; color:var(--t-mut);
+        }
+        .node-pill .dot {
+            width:6px; height:6px; border-radius:50%;
+            background:var(--c-green); box-shadow:0 0 6px var(--c-green);
+            animation:blink 2s ease infinite;
+        }
+        @keyframes blink { 0%,100%{opacity:1;} 50%{opacity:0.4;} }
+
+        .role-chip {
+            padding:0.28rem 0.75rem; border-radius:999px;
+            border:1px solid rgba(99,202,255,0.3);
+            background:rgba(99,202,255,0.08);
+            font-family:'Space Mono',monospace;
+            font-size:0.72rem; color:var(--c-cyan);
+        }
+
+        .btn-logout {
+            font-family:'Space Mono',monospace;
+            font-size:0.75rem;
+            padding:0.28rem 0.85rem; border-radius:999px;
+            border:1px solid rgba(248,113,113,0.3);
+            background:rgba(248,113,113,0.07);
+            color:var(--c-red); text-decoration:none;
+            transition:background 0.2s;
+        }
+        .btn-logout:hover { background:rgba(248,113,113,0.15); color:var(--c-red); }
+
+        /* ── Main layout ── */
+        .main {
+            max-width:1300px; margin:auto;
+            padding:2rem 1.5rem;
+            position:relative; z-index:10;
+            display:grid;
+            grid-template-columns:340px 1fr;
+            gap:1.5rem;
+            align-items:start;
+        }
+
+        /* ── Upload card ── */
+        .upload-card {
+            background:rgba(9,13,26,0.7);
+            backdrop-filter:blur(20px);
+            border:1px solid rgba(99,202,255,0.15);
+            border-radius:20px; padding:1.8rem;
+            position:relative; overflow:hidden;
+            box-shadow:0 0 0 1px rgba(99,202,255,0.05), 0 32px 64px rgba(0,0,0,0.4);
+            animation:cardIn 0.6s var(--ease) both;
+        }
+        .upload-card::before {
+            content:''; position:absolute;
+            top:0; left:10%; right:10%; height:1px;
+            background:linear-gradient(90deg,transparent,rgba(99,202,255,0.45),transparent);
+        }
+        @keyframes cardIn {
+            from{opacity:0;transform:translateY(20px);} to{opacity:1;transform:translateY(0);}
+        }
+
+        .card-head {
+            display:flex; align-items:center; gap:0.7rem;
+            margin-bottom:1.4rem;
+        }
+        .card-icon {
+            width:36px; height:36px; border-radius:10px;
+            background:rgba(99,202,255,0.12);
+            border:1px solid rgba(99,202,255,0.2);
+            display:flex; align-items:center; justify-content:center;
+            font-size:0.9rem; color:var(--c-cyan);
+        }
+        .card-title { font-size:1rem; font-weight:700; }
+        .card-sub { font-size:0.78rem; color:var(--t-mut); margin-top:0.1rem; }
+
+        .f-label {
+            display:block;
+            font-family:'Space Mono',monospace;
+            font-size:0.68rem; letter-spacing:0.1em;
+            text-transform:uppercase; color:var(--t-mut);
+            margin-bottom:0.35rem;
+        }
+        .f-group { margin-bottom:1rem; }
+
+        .f-select, .f-file {
+            width:100%;
+            padding:0.7rem 0.9rem;
+            background:rgba(255,255,255,0.04);
+            border:1px solid var(--c-border);
+            border-radius:10px;
+            color:var(--t-pri);
+            font-family:'Space Mono',monospace;
+            font-size:0.82rem;
+            outline:none;
+            transition:border-color 0.2s, box-shadow 0.2s;
+            -webkit-appearance:none;
+        }
+        .f-select:focus, .f-file:focus {
+            border-color:rgba(99,202,255,0.45);
+            box-shadow:0 0 0 3px rgba(99,202,255,0.1);
+        }
+        .f-select option { background:#0d1122; }
+
+        /* file input custom */
+        .file-drop {
+            border:1px dashed rgba(99,202,255,0.25);
+            border-radius:10px;
+            padding:1.2rem;
+            text-align:center;
+            cursor:pointer;
+            transition:border-color 0.2s, background 0.2s;
+            background:rgba(99,202,255,0.03);
+        }
+        .file-drop:hover { border-color:rgba(99,202,255,0.5); background:rgba(99,202,255,0.07); }
+        .file-drop i { font-size:1.4rem; color:var(--c-cyan); display:block; margin-bottom:0.5rem; }
+        .file-drop span { font-family:'Space Mono',monospace; font-size:0.75rem; color:var(--t-mut); }
+        .file-drop input[type=file] { display:none; }
+
+        .btn-upload {
+            width:100%; padding:0.85rem;
+            border:none; border-radius:10px;
+            background:#0d1f3c;overflow:hidden;padding:2px;
+            color:#05070f;
+            font-family:'Space Mono',monospace;
+            font-size:0.84rem; font-weight:700;
+            letter-spacing:0.05em; cursor:pointer;
+            transition:opacity 0.2s, transform 0.2s;
+            margin-top:0.4rem;
+        }
+        .btn-upload:hover { opacity:0.9; transform:translateY(-1px); }
+
+        /* ── Blockchain table ── */
+        .chain-card {
+            background:rgba(9,13,26,0.65);
+            backdrop-filter:blur(18px);
+            border:1px solid var(--c-border);
+            border-radius:20px; padding:1.8rem;
+            animation:cardIn 0.65s 0.1s var(--ease) both;
+            box-shadow:0 32px 64px rgba(0,0,0,0.35);
+        }
+
+        .chain-table {
+            width:100%; border-collapse:collapse; margin-top:1rem;
+        }
+        .chain-table thead th {
+            font-family:'Space Mono',monospace;
+            font-size:0.68rem; letter-spacing:0.1em;
+            text-transform:uppercase; color:rgba(99,202,255,0.7);
+            padding:0.6rem 0.8rem;
+            border-bottom:1px solid var(--c-border);
+            text-align:left;
+        }
+        .chain-table tbody tr {
+            border-bottom:1px solid rgba(255,255,255,0.04);
+            transition:background 0.15s;
+        }
+        .chain-table tbody tr:hover { background:rgba(255,255,255,0.03); }
+        .chain-table tbody tr:last-child { border-bottom:none; }
+        .chain-table td {
+            padding:0.75rem 0.8rem;
+            font-family:'Space Mono',monospace;
+            font-size:0.78rem; color:var(--t-mut);
+            vertical-align:middle;
+        }
+        .chain-table .tx-hash {
+            color:var(--c-cyan); font-size:0.72rem;
+            max-width:300px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+        }
+        .tx-badge {
+            display:inline-flex; align-items:center; gap:0.3rem;
+            padding:0.2rem 0.6rem; border-radius:999px;
+            background:rgba(52,211,153,0.12);
+            border:1px solid rgba(52,211,153,0.25);
+            color:#34d399; font-size:0.68rem;
+        }
+        .tx-badge::before {
+            content:''; width:5px; height:5px; border-radius:50%;
+            background:var(--c-green);
+        }
+
+        .empty-state {
+            text-align:center; padding:3rem 1rem;
+            font-family:'Space Mono',monospace;
+            font-size:0.78rem; color:var(--t-faint);
+        }
+        .empty-state i { font-size:1.8rem; margin-bottom:0.8rem; display:block; opacity:0.3; }
+
+        /* ── Selected file name ── */
+        .file-chosen {
+            font-family:'Space Mono',monospace; font-size:0.73rem;
+            color:var(--c-green); margin-top:0.4rem;
+            min-height:1.1em;
+        }
+
+        @media(max-width:900px){
+            .main { grid-template-columns:1fr; }
+        }
+
+        /* ══ EXTRA SECTIONS ══ */
+        .lower { max-width:1300px; margin:0 auto; padding:0 1.5rem 2.5rem; position:relative; z-index:10; }
+
+        /* Stats row */
+        .stats-row { display:grid; grid-template-columns:repeat(4,1fr); gap:1rem; margin-bottom:1.5rem; }
+        @media(max-width:900px){ .stats-row{ grid-template-columns:repeat(2,1fr); } }
+
+        .stat-card {
+            background:rgba(9,13,26,0.65); backdrop-filter:blur(14px);
+            border:1px solid var(--c-border); border-radius:16px;
+            padding:1.3rem 1.2rem;
+            display:flex; align-items:center; gap:1rem;
+            transition:border-color 0.25s, transform 0.25s;
+        }
+        .stat-card:hover { border-color:rgba(99,202,255,0.25); transform:translateY(-3px); }
+        .stat-icon { width:42px; height:42px; border-radius:12px; flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:1rem; }
+        .stat-num { font-family:'Space Mono',monospace; font-size:1.55rem; font-weight:700; line-height:1; }
+        .stat-label { font-size:0.75rem; color:var(--t-mut); margin-top:0.25rem; }
+        .stat-delta { font-family:'Space Mono',monospace; font-size:0.65rem; margin-top:0.2rem; }
+        .delta-up { color:#34d399; } .delta-dn { color:#f87171; }
+
+        /* Mid row */
+        .mid-row { display:grid; grid-template-columns:1fr 1fr; gap:1.5rem; margin-bottom:1.5rem; }
+        @media(max-width:900px){ .mid-row{ grid-template-columns:1fr; } }
+
+        /* Quick Actions */
+        .qa-card { background:rgba(9,13,26,0.65); backdrop-filter:blur(14px); border:1px solid var(--c-border); border-radius:18px; padding:1.6rem; }
+        .qa-grid { display:grid; grid-template-columns:1fr 1fr; gap:0.65rem; margin-top:1.1rem; }
+        .qa-btn {
+            display:flex; flex-direction:column; align-items:flex-start; gap:0.35rem;
+            padding:1rem; border-radius:12px; border:1px solid var(--c-border);
+            background:rgba(255,255,255,0.025); cursor:pointer;
+            transition:all 0.2s; text-decoration:none;
+        }
+        .qa-btn:hover { border-color:rgba(99,202,255,0.3); background:rgba(99,202,255,0.05); transform:translateY(-2px); }
+        .qa-btn i { font-size:1.1rem; }
+        .qa-btn .qa-title { font-size:0.82rem; font-weight:700; color:var(--t-pri); }
+        .qa-btn .qa-desc  { font-family:'Space Mono',monospace; font-size:0.65rem; color:var(--t-faint); }
+
+        /* Network map */
+        .net-card { background:rgba(9,13,26,0.65); backdrop-filter:blur(14px); border:1px solid var(--c-border); border-radius:18px; padding:1.6rem; overflow:hidden; }
+        #netCanvas { width:100%; height:190px; display:block; }
+
+        /* Security Feed */
+        .feed-card { background:rgba(9,13,26,0.65); backdrop-filter:blur(14px); border:1px solid var(--c-border); border-radius:18px; padding:1.6rem; }
+        .feed-list { margin-top:1rem; display:flex; flex-direction:column; gap:0.55rem; max-height:280px; overflow:hidden; }
+        .feed-item {
+            display:flex; align-items:center; gap:0.75rem;
+            padding:0.65rem 0.8rem; border-radius:10px;
+            background:rgba(255,255,255,0.025); border:1px solid rgba(255,255,255,0.05);
+            animation:feedIn 0.4s var(--ease) both; transition:background 0.2s;
+        }
+        .feed-item:hover { background:rgba(255,255,255,0.04); }
+        @keyframes feedIn { from{opacity:0;transform:translateX(-10px);} to{opacity:1;transform:translateX(0);} }
+        .feed-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; animation:blink 2s ease infinite; }
+        .feed-dot.green  { background:#34d399; box-shadow:0 0 6px #34d399; }
+        .feed-dot.cyan   { background:#63caff; box-shadow:0 0 6px #63caff; }
+        .feed-dot.amber  { background:#fbbf24; box-shadow:0 0 6px #fbbf24; }
+        .feed-dot.violet { background:#a78bfa; box-shadow:0 0 6px #a78bfa; }
+        .feed-text { flex:1; font-size:0.8rem; color:var(--t-pri); }
+        .feed-text .dim { color:var(--t-faint); }
+        .feed-time { font-family:'Space Mono',monospace; font-size:0.65rem; color:var(--t-faint); white-space:nowrap; }
+        .live-dot {
+            display:inline-flex; align-items:center; gap:0.4rem;
+            font-family:'Space Mono',monospace; font-size:0.68rem; color:#34d399;
+        }
+        .live-dot::before { content:''; width:6px; height:6px; border-radius:50%; background:#34d399; box-shadow:0 0 6px #34d399; animation:blink 1.4s ease infinite; }
+
+        /* shared card head */
+        .s-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:0.2rem; }
+        .s-head-left { display:flex; align-items:center; gap:0.7rem; }
+        .s-icon { width:34px; height:34px; border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:0.85rem; }
+        .s-title { font-size:0.95rem; font-weight:700; }
+        .s-sub   { font-size:0.76rem; color:var(--t-mut); }
+
+        /* copy toast */
+        .copy-toast {
+            position:fixed; bottom:2rem; left:50%; transform:translateX(-50%) translateY(10px);
+            background:rgba(52,211,153,0.12); border:1px solid rgba(52,211,153,0.35);
+            border-radius:999px; padding:0.55rem 1.4rem;
+            font-family:'Space Mono',monospace; font-size:0.78rem; color:#34d399;
+            opacity:0; pointer-events:none; z-index:999;
+            transition:opacity 0.3s, transform 0.3s;
+        }
+        .copy-toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+
+    /* ══════════════════════════════════════
+       DARK / LIGHT MODE TOGGLE
+    ══════════════════════════════════════ */
+    .theme-toggle {
+        position: fixed; bottom: 1.8rem; right: 1.8rem;
+        z-index: 9999;
+        width: 48px; height: 48px; border-radius: 50%;
+        border: 1px solid rgba(99,202,255,0.3);
+        background: rgba(9,13,26,0.85);
+        backdrop-filter: blur(12px);
+        display: flex; align-items: center; justify-content: center;
+        cursor: pointer; font-size: 1.1rem;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.4), 0 0 0 1px rgba(99,202,255,0.1);
+        transition: all 0.3s ease;
+    }
+    .theme-toggle:hover {
+        border-color: rgba(99,202,255,0.6);
+        box-shadow: 0 4px 24px rgba(99,202,255,0.25);
+        transform: scale(1.08);
+    }
+
+    /* ── Light mode overrides ── */
+    body.light-mode {
+        background: #f0f4f8 !important;
+        color: #0f172a !important;
+    }
+    body.light-mode::before {
+        background-image:
+            linear-gradient(rgba(14,100,180,0.06) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(14,100,180,0.06) 1px, transparent 1px) !important;
+    }
+    body.light-mode::after {
+        background: radial-gradient(circle, rgba(99,202,255,0.08) 0%, transparent 68%) !important;
+    }
+    body.light-mode .navbar,
+    body.light-mode .topbar {
+        background: rgba(240,244,248,0.92) !important;
+        border-bottom-color: rgba(14,100,180,0.12) !important;
+    }
+    body.light-mode .navbar-brand,
+    body.light-mode .brand { color: #0f172a !important; }
+    body.light-mode .nav-user-pill,
+    body.light-mode .node-pill {
+        background: rgba(14,100,180,0.06);
+        border-color: rgba(14,100,180,0.18) !important;
+        color: #334155 !important;
+    }
+    body.light-mode .glass-card,
+    body.light-mode .upload-card,
+    body.light-mode .chain-card,
+    body.light-mode .file-card,
+    body.light-mode .qa-card,
+    body.light-mode .net-card,
+    body.light-mode .feed-card,
+    body.light-mode .stat-card {
+        background: rgba(255,255,255,0.82) !important;
+        border-color: rgba(14,100,180,0.14) !important;
+        color: #0f172a !important;
+    }
+    body.light-mode .chain-table td,
+    body.light-mode .feed-text,
+    body.light-mode .s-sub,
+    body.light-mode .section-sub,
+    body.light-mode .card-sub { color: #475569 !important; }
+    body.light-mode .chain-table thead th { color: rgba(14,100,180,0.8) !important; }
+    body.light-mode .hero-body, body.light-mode p { color: #334155 !important; }
+    body.light-mode .feat-card,
+    body.light-mode .feature-card,
+    body.light-mode .stat-item,
+    body.light-mode .trust-bar {
+        background: rgba(255,255,255,0.75) !important;
+        border-color: rgba(14,100,180,0.12) !important;
+    }
+    body.light-mode .feat-card p { color: #475569 !important; }
+    body.light-mode .form-control,
+    body.light-mode .form-select,
+    body.light-mode input,
+    body.light-mode select {
+        background: rgba(255,255,255,0.9) !important;
+        border-color: rgba(14,100,180,0.2) !important;
+        color: #0f172a !important;
+    }
+    body.light-mode .hba-footer {
+        background: linear-gradient(180deg, rgba(224,236,248,0.95) 0%, rgba(210,228,245,0.98) 100%) !important;
+        border-top-color: rgba(14,100,180,0.15) !important;
+    }
+    body.light-mode .hba-footer .footer-brand-name,
+    body.light-mode .hba-footer .footer-col-title { color: #0f172a !important; }
+    body.light-mode .hba-footer .footer-desc,
+    body.light-mode .hba-footer .footer-link,
+    body.light-mode .hba-footer .faq-q,
+    body.light-mode .hba-footer .footer-contact-item { color: #334155 !important; }
+    body.light-mode .hba-footer .footer-link:hover { color: #1e88e5 !important; }
+    body.light-mode .hba-footer .footer-divider { border-color: rgba(14,100,180,0.15) !important; }
+    body.light-mode .hba-footer .footer-bottom { color: #475569 !important; }
+    body.light-mode .hba-footer .social-btn {
+        background: rgba(14,100,180,0.08) !important;
+        border-color: rgba(14,100,180,0.2) !important;
+        color: #1e88e5 !important;
+    }
+    body.light-mode .hba-footer .howto-step { border-left-color: rgba(14,100,180,0.25) !important; }
+    body.light-mode .hba-footer .howto-num {
+        background: rgba(14,100,180,0.1) !important;
+        color: #1e88e5 !important;
+    }
+    body.light-mode .theme-toggle {
+        background: rgba(240,244,248,0.9) !important;
+        border-color: rgba(14,100,180,0.3) !important;
+    }
+    body.light-mode .faq-item { border-color: rgba(14,100,180,0.1) !important; }
+    body.light-mode .faq-item summary { color: #0f172a !important; }
+    body.light-mode .faq-item[open] summary { color: #1e88e5 !important; }
+    body.light-mode .faq-a { color: #475569 !important; }
+    body.light-mode .ticket-card {
+        background: rgba(14,100,180,0.05) !important;
+        border-color: rgba(14,100,180,0.18) !important;
+    }
+
+    /* ══════════════════════════════════════
+       HBA VAULT FOOTER
+    ══════════════════════════════════════ */
+    .hba-footer {
+        position: relative; z-index: 10;
+        background: linear-gradient(180deg, rgba(5,8,18,0.97) 0%, rgba(4,6,14,0.99) 100%);
+        border-top: 1px solid rgba(99,202,255,0.12);
+        padding: 3.5rem 0 0;
+        margin-top: 4rem;
+        font-family: 'Syne', sans-serif;
+    }
+    .hba-footer::before {
+        content: '';
+        position: absolute; top: 0; left: 15%; right: 15%; height: 1px;
+        background: linear-gradient(90deg, transparent, rgba(99,202,255,0.45), rgba(167,139,250,0.35), transparent);
+    }
+
+    /* Brand col */
+    .footer-brand { margin-bottom: 1.2rem; }
+    .footer-brand-logo {
+        width: 38px; height: 38px; border-radius: 10px;
+        background: #0d1f3c; overflow: hidden; padding: 3px;
+        display: inline-flex; align-items: center; justify-content: center;
+        margin-right: 0.55rem; vertical-align: middle;
+    }
+    .footer-brand-logo img { width: 100%; height: 100%; object-fit: contain; }
+    .footer-brand-name {
+        font-family: 'Space Mono', monospace;
+        font-size: 1rem; font-weight: 700;
+        color: #f1f5f9; vertical-align: middle;
+    }
+    .footer-brand-name span { color: #63caff; }
+    .footer-desc {
+        font-size: 0.82rem; color: rgba(241,245,249,0.42);
+        line-height: 1.7; margin-top: 0.7rem; max-width: 240px;
+    }
+
+    /* Social buttons */
+    .social-row { display: flex; gap: 0.5rem; margin-top: 1.2rem; flex-wrap: wrap; }
+    .social-btn {
+        display: inline-flex; align-items: center; gap: 0.4rem;
+        padding: 0.35rem 0.85rem; border-radius: 999px;
+        border: 1px solid rgba(99,202,255,0.2);
+        background: rgba(99,202,255,0.06);
+        font-family: 'Space Mono', monospace;
+        font-size: 0.7rem; color: #63caff;
+        text-decoration: none;
+        transition: all 0.2s;
+    }
+    .social-btn:hover {
+        background: rgba(99,202,255,0.14);
+        border-color: rgba(99,202,255,0.5);
+        color: #63caff; transform: translateY(-2px);
+    }
+
+    /* Column titles */
+    .footer-col-title {
+        font-family: 'Space Mono', monospace;
+        font-size: 0.7rem; letter-spacing: 0.13em;
+        text-transform: uppercase; color: #f1f5f9;
+        margin-bottom: 1.2rem;
+        display: flex; align-items: center; gap: 0.5rem;
+    }
+    .footer-col-title::after {
+        content: ''; flex: 1; height: 1px;
+        background: rgba(99,202,255,0.15);
+    }
+
+    /* Contact items */
+    .footer-contact-item {
+        display: flex; align-items: flex-start; gap: 0.65rem;
+        font-size: 0.81rem; color: rgba(241,245,249,0.5);
+        margin-bottom: 0.85rem; line-height: 1.5;
+        text-decoration: none; transition: color 0.2s;
+    }
+    a.footer-contact-item:hover { color: #63caff; }
+    .footer-contact-item i {
+        color: #63caff; font-size: 0.8rem; margin-top: 0.15rem; flex-shrink: 0;
+    }
+
+    /* FAQ accordion */
+    .faq-item {
+        border-bottom: 1px solid rgba(255,255,255,0.06);
+        padding: 0.55rem 0;
+    }
+    .faq-item:last-child { border-bottom: none; }
+    .faq-item summary {
+        font-size: 0.8rem; color: rgba(241,245,249,0.7);
+        cursor: pointer; list-style: none;
+        display: flex; align-items: center; justify-content: space-between;
+        gap: 0.5rem; padding: 0.2rem 0;
+        transition: color 0.2s;
+    }
+    .faq-item summary::-webkit-details-marker { display: none; }
+    .faq-item summary::after {
+        content: '+'; color: #63caff; font-size: 1rem;
+        transition: transform 0.25s; flex-shrink: 0;
+    }
+    .faq-item[open] summary { color: #63caff; }
+    .faq-item[open] summary::after { transform: rotate(45deg); }
+    .faq-a {
+        font-size: 0.77rem; color: rgba(241,245,249,0.42);
+        line-height: 1.65; padding: 0.6rem 0 0.3rem;
+    }
+
+    /* How-to steps */
+    .howto-list { display: flex; flex-direction: column; gap: 0.7rem; }
+    .howto-step {
+        display: flex; align-items: flex-start; gap: 0.65rem;
+        padding-left: 0.5rem;
+        border-left: 2px solid rgba(99,202,255,0.2);
+        font-size: 0.8rem; color: rgba(241,245,249,0.5);
+        line-height: 1.5;
+    }
+    .howto-num {
+        flex-shrink: 0; width: 20px; height: 20px; border-radius: 50%;
+        background: rgba(99,202,255,0.1); color: #63caff;
+        font-family: 'Space Mono', monospace; font-size: 0.65rem; font-weight: 700;
+        display: flex; align-items: center; justify-content: center;
+        margin-top: 0.05rem;
+    }
+
+    /* Support ticket card */
+    .ticket-card {
+        background: rgba(99,202,255,0.04);
+        border: 1px solid rgba(99,202,255,0.15);
+        border-radius: 12px; padding: 1rem 1.1rem;
+        margin-top: 1.2rem;
+    }
+    .ticket-card p {
+        font-size: 0.78rem; color: rgba(241,245,249,0.45);
+        margin-bottom: 0.75rem; line-height: 1.6;
+    }
+    .btn-ticket {
+        display: inline-flex; align-items: center; gap: 0.45rem;
+        padding: 0.5rem 1.2rem; border-radius: 8px; border: none;
+        background: linear-gradient(135deg, #63caff, #a78bfa);
+        color: #05070f; font-family: 'Space Mono', monospace;
+        font-size: 0.75rem; font-weight: 700;
+        text-decoration: none; cursor: pointer;
+        transition: opacity 0.2s, transform 0.2s;
+    }
+    .btn-ticket:hover { opacity: 0.9; transform: translateY(-1px); color: #05070f; }
+
+    /* Divider + bottom bar */
+    .footer-divider {
+        border: none; border-top: 1px solid rgba(255,255,255,0.06);
+        margin: 2.5rem 0 0;
+    }
+    .footer-bottom {
+        padding: 1.1rem 0;
+        display: flex; align-items: center; justify-content: space-between;
+        flex-wrap: wrap; gap: 0.5rem;
+        font-family: 'Space Mono', monospace;
+        font-size: 0.68rem; color: rgba(241,245,249,0.28);
+    }
+    .footer-bottom a { color: rgba(99,202,255,0.5); text-decoration: none; }
+    .footer-bottom a:hover { color: #63caff; }
+    .footer-live {
+        display: inline-flex; align-items: center; gap: 0.4rem;
+        color: #34d399; font-size: 0.65rem;
+    }
+    .footer-live::before {
+        content: ''; width: 5px; height: 5px; border-radius: 50%;
+        background: #34d399; box-shadow: 0 0 6px #34d399;
+        animation: blink 1.8s ease infinite;
+    }
+
+    /* ══ LIGHT MODE COMPREHENSIVE TEXT FIX ══ */
+    body.light-mode .howto-step { color: #1e293b !important; }
+    body.light-mode .howto-num  { background: rgba(14,100,180,0.12) !important; color: #1565c0 !important; border: 1px solid rgba(14,100,180,0.2) !important; }
+    body.light-mode .footer-desc { color: #334155 !important; }
+    body.light-mode .footer-contact-item,
+    body.light-mode .footer-contact-item span { color: #1e293b !important; }
+    body.light-mode .footer-contact-item i { color: #1565c0 !important; }
+    body.light-mode .footer-contact-item:hover,
+    body.light-mode a.footer-contact-item:hover { color: #1565c0 !important; }
+    body.light-mode .faq-item summary { color: #1e293b !important; }
+    body.light-mode .faq-item[open] summary { color: #1565c0 !important; }
+    body.light-mode .faq-item summary::after { color: #1565c0 !important; }
+    body.light-mode .faq-a { color: #475569 !important; }
+    body.light-mode .faq-item { border-bottom-color: rgba(14,100,180,0.12) !important; }
+    body.light-mode .ticket-card { background: rgba(14,100,180,0.06) !important; border-color: rgba(14,100,180,0.2) !important; }
+    body.light-mode .ticket-card p { color: #334155 !important; }
+    body.light-mode .footer-bottom { color: #475569 !important; }
+    body.light-mode .footer-bottom a { color: #1565c0 !important; }
+    body.light-mode .footer-live { color: #15803d !important; }
+    body.light-mode .footer-live::before { background: #16a34a !important; box-shadow: 0 0 6px #16a34a !important; }
+    body.light-mode .footer-col-title { color: #1e293b !important; border: none !important; }
+    body.light-mode .footer-col-title::after { background: rgba(14,100,180,0.2) !important; }
+    body.light-mode .footer-brand-name { color: #1e293b !important; }
+    body.light-mode .footer-brand-name span { color: #1565c0 !important; }
+    body.light-mode .social-btn { background: rgba(14,100,180,0.08) !important; border-color: rgba(14,100,180,0.25) !important; color: #1565c0 !important; }
+    body.light-mode .social-btn:hover { background: rgba(14,100,180,0.16) !important; color: #1565c0 !important; }
+    /* General text elements */
+    body.light-mode h1,
+    body.light-mode h2,
+    body.light-mode h3,
+    body.light-mode h4,
+    body.light-mode h5,
+    body.light-mode .card-title,
+    body.light-mode .s-title,
+    body.light-mode .section-title,
+    body.light-mode .stat-label,
+    body.light-mode .feed-time,
+    body.light-mode .qa-title  { color: #0f172a !important; }
+    body.light-mode .qa-desc   { color: #475569 !important; }
+    body.light-mode .qa-btn    { background: rgba(14,100,180,0.04) !important; border-color: rgba(14,100,180,0.14) !important; }
+    body.light-mode .qa-btn:hover { background: rgba(14,100,180,0.1) !important; border-color: rgba(14,100,180,0.35) !important; }
+    body.light-mode .role-chip { background: rgba(14,100,180,0.08) !important; border-color: rgba(14,100,180,0.25) !important; color: #1565c0 !important; }
+    body.light-mode .node-pill .dot { background: #16a34a !important; box-shadow: 0 0 6px #16a34a !important; }
+    body.light-mode .btn-logout { background: rgba(220,38,38,0.07) !important; border-color: rgba(220,38,38,0.25) !important; color: #dc2626 !important; }
+    body.light-mode .file-name { color: #1e293b !important; }
+    body.light-mode .chain-table tbody tr:hover { background: rgba(14,100,180,0.04) !important; }
+    body.light-mode .tx-badge { background: rgba(21,128,61,0.1) !important; border-color: rgba(21,128,61,0.25) !important; color: #15803d !important; }
+    body.light-mode .tx-badge::before { background: #16a34a !important; }
+    body.light-mode .tx-hash  { color: #1565c0 !important; }
+    body.light-mode .empty-state, body.light-mode .no-files { color: #64748b !important; }
+    body.light-mode .feed-dot.green  { box-shadow: 0 0 6px #16a34a !important; }
+    body.light-mode .feed-dot.cyan   { box-shadow: 0 0 6px #1565c0 !important; }
+    body.light-mode .live-dot { color: #15803d !important; }
+    body.light-mode .live-dot::before { background: #16a34a !important; box-shadow: 0 0 6px #16a34a !important; }
+    body.light-mode .stat-num { color: #1565c0 !important; }
+    body.light-mode .stat-delta { color: #15803d !important; }
+    
+    /* ══ PAGE TRANSITIONS ══ */
+    #page-overlay {
+        position: fixed; inset: 0; z-index: 99998;
+        background: #05070f;
+        opacity: 0; pointer-events: none;
+        transition: opacity 0.28s ease;
+    }
+    #page-overlay.active { opacity: 1; pointer-events: all; }
+    body { animation: hbaPageIn 0.35s ease both; }
+    @keyframes hbaPageIn {
+        from { opacity: 0; transform: translateY(6px); }
+        to   { opacity: 1; transform: translateY(0); }
+    }
+</style>
+</head>
+<body>
+
+    <!-- Topbar -->
+    <nav class="topbar">
+        <div class="topbar-inner">
+            <a class="brand" href="/">
+                <span class="icon-box"><img src="{{ url_for('static', filename='logo.png') }}" alt="HBA Vault" style="width:100%;height:100%;object-fit:contain;"></span>
+                HBA<span class="accent"> Vault</span>
+            </a>
+            <div class="topbar-right">
+                <div class="node-pill">
+                    <span class="dot"></span>
+                    {{ session['username'] }}
+                </div>
+                <span class="role-chip">SENDER NODE</span>
+                <a href="{{ url_for('logout') }}" class="btn-logout">
+                    <i class="fa-solid fa-arrow-right-from-bracket me-1"></i>Logout
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main content -->
+    <div class="main">
+
+        <!-- Upload card -->
+        <div class="upload-card">
+            <div class="card-head">
+                <div class="card-icon"><i class="fa-solid fa-arrow-up-from-bracket"></i></div>
+                <div>
+                    <div class="card-title">Secure Upload</div>
+                    <div class="card-sub">Hash + blockchain recorded</div>
+                </div>
+            </div>
+
+            <form action="{{ url_for('sender_dashboard') }}" method="POST" enctype="multipart/form-data">
+
+                <div class="f-group">
+                    <label class="f-label">Authorised Recipient</label>
+                    <div style="position:relative;">
+                        <select name="target_receiver" class="f-select" required>
+                            <option value="" disabled selected>Select receiver node…</option>
+                            {% for r in receivers %}
+                                <option value="{{ r.username }}">{{ r.username }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+
+                <div class="f-group">
+                    <label class="f-label">Document</label>
+                    <div class="file-drop" onclick="document.getElementById('fileInput').click()">
+                        <i class="fa-solid fa-cloud-arrow-up"></i>
+                        <span>Click to select file</span>
+                        <input type="file" name="file" id="fileInput" required
+                               onchange="document.getElementById('fileName').textContent = this.files[0]?.name || ''">
+                    </div>
+                    <div class="file-chosen" id="fileName"></div>
+                </div>
+
+                <button type="submit" class="btn-upload">
+                    <i class="fa-solid fa-paper-plane me-2"></i>Get OTP &amp; Upload
+                </button>
+            </form>
+        </div>
+
+        <!-- Blockchain history -->
+        <div class="chain-card">
+            <div class="card-head">
+                <div class="card-icon" style="background:rgba(167,139,250,0.12);border-color:rgba(167,139,250,0.2);color:var(--c-violet);">
+                    <i class="fa-solid fa-link"></i>
+                </div>
+                <div>
+                    <div class="card-title">Blockchain Ledger</div>
+                    <div class="card-sub">Immutable transaction history</div>
+                </div>
+            </div>
+
+            <table class="chain-table">
+                <thead>
+                    <tr>
+                        <th>Timestamp</th>
+                        <th>Status</th>
+                        <th>Transaction Data</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for tx in history %}
+                    <tr>
+                        <td>{{ tx['timestamp'] }}</td>
+                        <td><span class="tx-badge">SECURED</span></td>
+                        <td class="tx-hash" title="{{ tx['amount'] }}">{{ tx['amount'] }}</td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="3">
+                            <div class="empty-state">
+                                <i class="fa-solid fa-link"></i>
+                                No transactions yet for this node
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- ══════════════════════════════════
+         LOWER SECTIONS
+    ══════════════════════════════════ -->
+    <div class="lower">
+
+        <!-- ── 1. Vault Stats ── -->
+        <div class="stats-row">
+            <div class="stat-card">
+                <div class="stat-icon" style="background:rgba(99,202,255,0.1);border:1px solid rgba(99,202,255,0.2);">
+                    <i class="fa-solid fa-file-arrow-up" style="color:#63caff;"></i>
+                </div>
+                <div>
+                    <div class="stat-num" id="statFiles">—</div>
+                    <div class="stat-label">Files Sent</div>
+                    <div class="stat-delta delta-up" id="statFilesDelta"></div>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon" style="background:rgba(167,139,250,0.1);border:1px solid rgba(167,139,250,0.2);">
+                    <i class="fa-solid fa-shield-check" style="color:#a78bfa;"></i>
+                </div>
+                <div>
+                    <div class="stat-num" id="statAuth">—</div>
+                    <div class="stat-label">Auth Events</div>
+                    <div class="stat-delta delta-up" id="statAuthDelta"></div>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon" style="background:rgba(52,211,153,0.1);border:1px solid rgba(52,211,153,0.2);">
+                    <i class="fa-solid fa-link" style="color:#34d399;"></i>
+                </div>
+                <div>
+                    <div class="stat-num" id="statBlocks">—</div>
+                    <div class="stat-label">Blocks Mined</div>
+                    <div class="stat-delta delta-up" id="statBlocksDelta"></div>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon" style="background:rgba(251,191,36,0.1);border:1px solid rgba(251,191,36,0.2);">
+                    <i class="fa-solid fa-circle-check" style="color:#fbbf24;"></i>
+                </div>
+                <div>
+                    <div class="stat-num" id="statRate">100%</div>
+                    <div class="stat-label">Success Rate</div>
+                    <div class="stat-delta delta-up">↑ All clear</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ── 2 & 3. Network Map + Quick Actions ── -->
+        <div class="mid-row">
+
+            <!-- Node Network Map -->
+            <div class="net-card">
+                <div class="s-head">
+                    <div class="s-head-left">
+                        <div class="s-icon" style="background:rgba(99,202,255,0.1);border:1px solid rgba(99,202,255,0.18);">
+                            <i class="fa-solid fa-diagram-project" style="color:#63caff;font-size:0.8rem;"></i>
+                        </div>
+                        <div>
+                            <div class="s-title">Node Network</div>
+                            <div class="s-sub">Live sender → receiver map</div>
+                        </div>
+                    </div>
+                    <span class="live-dot">LIVE</span>
+                </div>
+                <canvas id="netCanvas"></canvas>
+            </div>
+
+            <!-- Quick Actions -->
+            <div class="qa-card">
+                <div class="s-head">
+                    <div class="s-head-left">
+                        <div class="s-icon" style="background:rgba(167,139,250,0.1);border:1px solid rgba(167,139,250,0.18);">
+                            <i class="fa-solid fa-bolt" style="color:#a78bfa;font-size:0.8rem;"></i>
+                        </div>
+                        <div>
+                            <div class="s-title">Quick Actions</div>
+                            <div class="s-sub">Common shortcuts</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="qa-grid">
+                    <a href="{{ url_for('sender_dashboard') }}" class="qa-btn">
+                        <i class="fa-solid fa-rotate" style="color:#63caff;"></i>
+                        <span class="qa-title">Refresh Dashboard</span>
+                        <span class="qa-desc">Reload page state</span>
+                    </a>
+                    <button class="qa-btn" onclick="copyLastHash()">
+                        <i class="fa-solid fa-copy" style="color:#a78bfa;"></i>
+                        <span class="qa-title">Copy Last Hash</span>
+                        <span class="qa-desc">Clipboard shortcut</span>
+                    </button>
+                    <a href="{{ url_for('logout') }}" class="qa-btn">
+                        <i class="fa-solid fa-arrow-right-from-bracket" style="color:#f87171;"></i>
+                        <span class="qa-title">Secure Logout</span>
+                        <span class="qa-desc">End session safely</span>
+                    </a>
+                    <button class="qa-btn" onclick="exportLog()">
+                        <i class="fa-solid fa-file-export" style="color:#34d399;"></i>
+                        <span class="qa-title">Export Log</span>
+                        <span class="qa-desc">Download as .txt</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ── 4. Live Security Feed ── -->
+        <div class="feed-card">
+            <div class="s-head">
+                <div class="s-head-left">
+                    <div class="s-icon" style="background:rgba(52,211,153,0.1);border:1px solid rgba(52,211,153,0.18);">
+                        <i class="fa-solid fa-terminal" style="color:#34d399;font-size:0.8rem;"></i>
+                    </div>
+                    <div>
+                        <div class="s-title">Security Feed</div>
+                        <div class="s-sub">Real-time system events</div>
+                    </div>
+                </div>
+                <span class="live-dot">LIVE</span>
+            </div>
+            <div class="feed-list" id="feedList"></div>
+        </div>
+    </div>
+
+    <!-- Copy toast -->
+    <div class="copy-toast" id="copyToast"><i class="fa-solid fa-check me-2"></i>Hash copied!</div>
+
+    <script>
+    /* ── Stats: count transactions from the blockchain history ── */
+    (function(){
+        {% set txcount = history | length %}
+        {% set filecount = namespace(n=0) %}
+        {% set authcount = namespace(n=0) %}
+        {% for tx in history %}{% if 'FILE' in tx.amount %}{% set filecount.n = filecount.n + 1 %}{% endif %}{% if 'AUTH' in tx.amount %}{% set authcount.n = authcount.n + 1 %}{% endif %}{% endfor %}
+        const files  = {{ filecount.n }};
+        const auths  = {{ authcount.n }};
+        const blocks = {{ txcount }} + 1;
+
+        function animCount(el, target, suffix=''){
+            let n=0; const step=Math.max(1,Math.floor(target/30));
+            const iv=setInterval(()=>{
+                n=Math.min(n+step,target);
+                el.textContent=n+suffix;
+                if(n>=target) clearInterval(iv);
+            },40);
+        }
+        animCount(document.getElementById('statFiles'), files);
+        animCount(document.getElementById('statAuth'),  auths);
+        animCount(document.getElementById('statBlocks'),blocks);
+
+        document.getElementById('statFilesDelta').textContent  = files  ? '↑ This session' : '— No uploads yet';
+        document.getElementById('statAuthDelta').textContent   = auths  ? '↑ All verified'  : '— Awaiting auth';
+        document.getElementById('statBlocksDelta').textContent = blocks ? '↑ Chain intact'  : '';
+    })();
+
+    /* ── Network map canvas ── */
+    (function(){
+        const canvas = document.getElementById('netCanvas');
+        const W = canvas.parentElement.offsetWidth - 32;
+        canvas.width  = W;
+        canvas.height = 190;
+        const ctx = canvas.getContext('2d');
+
+        // nodes: center=sender, others=receivers
+        const nodes = [
+            { x:W/2, y:95,  label:'{{ session["username"] }}', r:18, color:'#63caff', role:'sender' },
+            { x:W*0.18, y:48,  label:'node_A', r:12, color:'#a78bfa', role:'receiver' },
+            { x:W*0.82, y:48,  label:'node_B', r:12, color:'#a78bfa', role:'receiver' },
+            { x:W*0.12, y:155, label:'node_C', r:12, color:'#a78bfa', role:'receiver' },
+            { x:W*0.88, y:155, label:'node_D', r:12, color:'#a78bfa', role:'receiver' },
+        ];
+
+        // animated packets
+        const packets = [];
+        function spawnPacket(){
+            const n = nodes[1 + Math.floor(Math.random()*4)];
+            packets.push({ x:nodes[0].x, y:nodes[0].y, tx:n.x, ty:n.y, t:0, color:n.color });
+        }
+        setInterval(spawnPacket, 1400);
+
+        let t = 0;
+        function draw(){
+            ctx.clearRect(0,0,W,190);
+
+            // edges
+            nodes.slice(1).forEach(n => {
+                ctx.beginPath();
+                ctx.moveTo(nodes[0].x, nodes[0].y);
+                ctx.lineTo(n.x, n.y);
+                ctx.strokeStyle = 'rgba(99,202,255,0.12)';
+                ctx.lineWidth = 1.5;
+                ctx.setLineDash([4,6]);
+                ctx.stroke();
+                ctx.setLineDash([]);
+            });
+
+            // packets
+            for(let i=packets.length-1;i>=0;i--){
+                const p=packets[i];
+                p.t = Math.min(p.t+0.018, 1);
+                const px = p.x + (p.tx-p.x)*p.t;
+                const py = p.y + (p.ty-p.y)*p.t;
+                ctx.beginPath();
+                ctx.arc(px,py,4,0,Math.PI*2);
+                ctx.fillStyle = p.color;
+                ctx.shadowColor = p.color;
+                ctx.shadowBlur = 10;
+                ctx.fill();
+                ctx.shadowBlur = 0;
+                if(p.t>=1) packets.splice(i,1);
+            }
+
+            // nodes
+            nodes.forEach(n => {
+                // glow ring
+                ctx.beginPath();
+                ctx.arc(n.x,n.y,n.r+5,0,Math.PI*2);
+                ctx.fillStyle = n.color.replace(')',',0.08)').replace('rgb','rgba');
+                ctx.fill();
+
+                ctx.beginPath();
+                ctx.arc(n.x,n.y,n.r,0,Math.PI*2);
+                ctx.fillStyle = n.role==='sender' ? 'rgba(99,202,255,0.18)' : 'rgba(167,139,250,0.14)';
+                ctx.strokeStyle = n.color;
+                ctx.lineWidth = 1.5;
+                ctx.fill(); ctx.stroke();
+
+                ctx.fillStyle = n.color;
+                ctx.font = `600 ${n.role==='sender'?'10':'9'}px Space Mono, monospace`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(n.label.slice(0,8), n.x, n.y);
+            });
+
+            t++; requestAnimationFrame(draw);
+        }
+        draw();
+    })();
+
+    /* ── Security Feed ── */
+    (function(){
+        const list = document.getElementById('feedList');
+        const events = [
+            { color:'green',  icon:'fa-shield-check',  text:'Biometric auth verified',       sub:'LBPH confidence < 75' },
+            { color:'cyan',   icon:'fa-file-arrow-up', text:'File upload authorised',         sub:'OTP validated' },
+            { color:'violet', icon:'fa-link',           text:'Block added to chain',           sub:'Proof recorded' },
+            { color:'amber',  icon:'fa-envelope',       text:'OTP dispatched via SMTP',        sub:'6-digit token sent' },
+            { color:'green',  icon:'fa-fingerprint',    text:'Face scan initiated',            sub:'Camera stream active' },
+            { color:'cyan',   icon:'fa-lock',           text:'Session token refreshed',        sub:'Flask secure session' },
+            { color:'violet', icon:'fa-database',       text:'SQLite write committed',         sub:'file_permissions table' },
+            { color:'amber',  icon:'fa-key',            text:'SHA-256 hash generated',         sub:'File fingerprint stored' },
+        ];
+
+        // seed with last blockchain events
+        {% for tx in history %}
+        addEvent(
+            '{{ "green" if "AUTH" in tx["amount"] else "cyan" if "FILE" in tx["amount"] else "violet" }}',
+            '{{ "shield-check" if "AUTH" in tx["amount"] else "file-arrow-up" if "FILE" in tx["amount"] else "arrow-down" }}',
+            '{{ tx["amount"][:40] }}',
+            '{{ tx["timestamp"] }}'
+        );
+        {% endfor %}
+
+        // add random events every 4s
+        let idx = 0;
+        function addRandom(){
+            const e = events[idx % events.length];
+            const now = new Date();
+            const ts  = now.toTimeString().slice(0,8);
+            addEvent(e.color, e.icon, e.text, ts, e.sub);
+            idx++;
+        }
+        setInterval(addRandom, 4000);
+        addRandom(); // immediate first
+
+        function addEvent(color, icon, text, time, sub=''){
+            const item = document.createElement('div');
+            item.className = 'feed-item';
+            item.style.animationDelay = '0s';
+            item.innerHTML = `
+                <span class="feed-dot ${color}"></span>
+                <i class="fa-solid fa-${icon}" style="color:var(--c-${color==='green'?'green':color==='cyan'?'cyan':color==='violet'?'violet':'amber'});font-size:0.78rem;width:14px;text-align:center;"></i>
+                <span class="feed-text">${text} <span class="dim">${sub ? '— '+sub : ''}</span></span>
+                <span class="feed-time">${time}</span>`;
+            list.prepend(item);
+            // keep max 8 items
+            while(list.children.length > 8) list.removeChild(list.lastChild);
+        }
+    })();
+
+    /* ── Quick action: copy last hash ── */
+    function copyLastHash(){
+        const hashes = document.querySelectorAll('.tx-hash');
+        const last   = hashes.length ? hashes[0].textContent.trim() : 'No hash available';
+        navigator.clipboard.writeText(last).catch(()=>{});
+        const t = document.getElementById('copyToast');
+        t.classList.add('show');
+        setTimeout(()=>t.classList.remove('show'), 2200);
+    }
+
+    /* ── Quick action: export log ── */
+    function exportLog(){
+        const rows = document.querySelectorAll('.chain-table tbody tr');
+        let txt = 'HBA Vault — Transaction Log\n' + '='.repeat(40) + '\n';
+        rows.forEach(r=>{
+            const cells=[...r.querySelectorAll('td')].map(c=>c.textContent.trim());
+            if(cells.length>1) txt += cells.join(' | ') + '\n';
+        });
+        const blob = new Blob([txt],{type:'text/plain'});
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'vault_log.txt'; a.click();
+    }
+    </script>
+
+
+    <!-- ══════════════════════════════════════
+         HBA VAULT FOOTER
+    ══════════════════════════════════════ -->
+    <footer class="hba-footer">
+        <div class="container">
+            <div class="row g-5">
+
+                <!-- ── Brand + Contact ── -->
+                <div class="col-lg-3 col-md-6">
+                    <div class="footer-brand">
+                        <span class="footer-brand-logo">
+                            <img src="{{ url_for('static', filename='logo.png') }}" alt="HBA Vault">
+                        </span>
+                        <span class="footer-brand-name">HBA<span> Vault</span></span>
+                    </div>
+                    <p class="footer-desc">
+                        Blockchain-secured file sharing with biometric authentication. Built for privacy, built for trust.
+                    </p>
+                    <div class="social-row">
+                        <a href="https://www.linkedin.com/in/erharish15" target="_blank" class="social-btn">
+                            <i class="fa-brands fa-linkedin-in"></i> LinkedIn
+                        </a>
+                        <a href="https://github.com/hari1715" target="_blank" class="social-btn">
+                            <i class="fa-brands fa-github"></i> GitHub
+                        </a>
+                    </div>
+                </div>
+
+                <!-- ── Contact Us ── -->
+                <div class="col-lg-3 col-md-6">
+                    <div class="footer-col-title"><i class="fa-solid fa-address-card" style="color:#63caff;"></i> Contact Us</div>
+                    <a href="/cdn-cgi/l/email-protection#056d67647364706971456268646c692b666a68" class="footer-contact-item">
+                        <i class="fa-regular fa-envelope"></i>
+                        <span><span class="__cf_email__" data-cfemail="355d57544354405941755258545c591b565a58">[email&#160;protected]</span></span>
+                    </a>
+                    <a href="tel:+919342235592" class="footer-contact-item">
+                        <i class="fa-solid fa-phone"></i>
+                        <span>+91 93422 35592</span>
+                    </a>
+                    <div class="footer-contact-item">
+                        <i class="fa-solid fa-location-dot"></i>
+                        <span>SRM Vadapalani,<br>Chennai – 600 026,<br>Tamil Nadu, India</span>
+                    </div>
+                </div>
+
+                <!-- ── FAQ ── -->
+                <div class="col-lg-3 col-md-6">
+                    <div class="footer-col-title"><i class="fa-regular fa-circle-question" style="color:#a78bfa;"></i> FAQs</div>
+                    <details class="faq-item">
+                        <summary>How do I upload a file securely?</summary>
+                        <p class="faq-a">Select a receiver, choose your file and submit. An OTP is sent to verify the upload, and a SHA-256 hash is recorded for file integrity.</p>
+                    </details>
+                    <details class="faq-item">
+                        <summary>Why is face verification required?</summary>
+                        <p class="faq-a">It is the second authentication layer — it confirms the registered user is accessing the account even if the password is compromised.</p>
+                    </details>
+                    <details class="faq-item">
+                        <summary>OTP not received?</summary>
+                        <p class="faq-a">Check your inbox and spam folder. Ensure the email used during registration is correct. Try requesting again after a few minutes.</p>
+                    </details>
+                    <details class="faq-item">
+                        <summary>How does blockchain improve security?</summary>
+                        <p class="faq-a">Every login, upload, and download event is recorded as an immutable blockchain transaction — creating a tamper-proof audit trail.</p>
+                    </details>
+                    <details class="faq-item">
+                        <summary>Unable to download a shared file?</summary>
+                        <p class="faq-a">The sender must authorise your account as the receiver. OTP verification must also be completed before the download is allowed.</p>
+                    </details>
+                </div>
+
+                <!-- ── Help / How-To + Support ── -->
+                <div class="col-lg-3 col-md-6">
+                    <div class="footer-col-title"><i class="fa-solid fa-circle-info" style="color:#34d399;"></i> How It Works</div>
+                    <div class="howto-list">
+                        <div class="howto-step"><span class="howto-num">1</span><span>Register with your details and enrol your face via the camera</span></div>
+                        <div class="howto-step"><span class="howto-num">2</span><span>Log in using password + facial biometric verification</span></div>
+                        <div class="howto-step"><span class="howto-num">3</span><span>Sender selects a receiver, uploads a file and enters the OTP</span></div>
+                        <div class="howto-step"><span class="howto-num">4</span><span>Receiver requests the file, completes OTP, and downloads securely</span></div>
+                        <div class="howto-step"><span class="howto-num">5</span><span>All events are logged to the blockchain ledger automatically</span></div>
+                    </div>
+
+                    <div class="ticket-card">
+                        <p>Need help? Submit a support ticket and our team will get back to you.</p>
+                        <a href="https://forms.gle/RQqJwyszS2mh2f9f8" target="_blank" class="btn-ticket">
+                            <i class="fa-solid fa-ticket"></i> Submit a Ticket
+                        </a>
+                    </div>
+                </div>
+
+            </div><!-- /row -->
+
+            <hr class="footer-divider">
+            <div class="footer-bottom">
+                <span>© 2026 HBA Vault. All rights reserved.</span>
+                <span class="footer-live">System Online</span>
+                <span>Built with <i class="fa-solid fa-heart" style="color:#f87171;font-size:0.6rem;"></i> at SRM Vadapalani</span>
+            </div>
+        </div>
+    </footer>
+
+    <!-- HBA Vault Theme Toggle -->
+    <button class="theme-toggle" id="themeToggle" title="Toggle light/dark mode">&#x1F319;</button>
+    <script>
+    (function() {
+        var btn = document.getElementById('themeToggle');
+        if (localStorage.getItem('hba-theme') === 'light') {
+            document.body.classList.add('light-mode');
+            if (btn) btn.textContent = '\u2600\uFE0F';
+        }
+        if (btn) {
+            btn.addEventListener('click', function() {
+                var isLight = document.body.classList.toggle('light-mode');
+                localStorage.setItem('hba-theme', isLight ? 'light' : 'dark');
+                btn.textContent = isLight ? '\u2600\uFE0F' : '\u{1F319}';
+            });
+        }
+    })();
+    </script>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+    <!-- ══ PAGE TRANSITION OVERLAY ══ -->
+    <div id="page-overlay"></div>
+    <script>
+    (function() {
+        var overlay = document.getElementById('page-overlay');
+
+        document.addEventListener('click', function(e) {
+            var a = e.target.closest('a[href]');
+            if (!a) return;
+            var href = a.getAttribute('href');
+            /* Skip: empty, hash anchors, javascript:, external/blank targets, form submits */
+            if (!href || href === '#' || href.startsWith('#') ||
+                href.startsWith('javascript') || a.target === '_blank') return;
+            e.preventDefault();
+            overlay.classList.add('active');
+            setTimeout(function() { window.location.href = href; }, 260);
+        });
+
+        /* Instantly clear overlay when browser navigates back/forward */
+        window.addEventListener('pageshow', function(e) {
+            overlay.classList.remove('active');
+            document.body.style.animation = 'none';
+            void document.body.offsetHeight; /* reflow */
+            document.body.style.animation = '';
+        });
+    })();
+    </script>
+</body>
+</html>
