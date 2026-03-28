@@ -731,6 +731,9 @@
                     {{ session['username'] }}
                 </div>
                 <span class="role-chip">SENDER NODE</span>
+                <a href="{{ url_for('blockchain_explorer') }}" class="btn-logout" style="border-color:rgba(167,139,250,0.3); background:rgba(167,139,250,0.07); color:var(--c-violet);">
+                    <i class="fa-solid fa-link me-1"></i>Explorer
+                </a>
                 <a href="{{ url_for('logout') }}" class="btn-logout">
                     <i class="fa-solid fa-arrow-right-from-bracket me-1"></i>Logout
                 </a>
@@ -766,6 +769,13 @@
                 </div>
 
                 <div class="f-group">
+                    <label class="f-label">Max Downloads (Before Auto-Burn)</label>
+                    <div style="position:relative;">
+                        <input type="number" name="max_downloads" class="f-select" value="1" min="1" max="100" required>
+                    </div>
+                </div>
+
+                <div class="f-group">
                     <label class="f-label">Document</label>
                     <div class="file-drop" onclick="document.getElementById('fileInput').click()">
                         <i class="fa-solid fa-cloud-arrow-up"></i>
@@ -794,9 +804,10 @@
                 </div>
             </div>
 
-            <table class="chain-table">
-                <thead>
-                    <tr>
+            <div class="chain-scroll" style="max-height: 350px; overflow-y: auto; padding-right: 0.5rem; scrollbar-width: thin; scrollbar-color: rgba(167,139,250,0.3) transparent;">
+                <table class="chain-table" style="margin-top:0;">
+                    <thead style="position: sticky; top: 0; background: rgba(9,13,26,0.95); z-index: 10;">
+                        <tr>
                         <th>Timestamp</th>
                         <th>Status</th>
                         <th>Transaction Data</th>
@@ -820,7 +831,8 @@
                     </tr>
                     {% endfor %}
                 </tbody>
-            </table>
+                </table>
+            </div>
         </div>
     </div>
 
