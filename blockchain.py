@@ -1,11 +1,34 @@
 import time
+import json
+import os
 
 class Blockchain:
     def __init__(self):
         self.chain = []
         self.current_transactions = []
-        # Create the genesis block
-        self.new_block(previous_hash='1', proof=100)
+        self.chain_file = "blockchain.json"
+        
+        self.load_chain()
+        
+        if not self.chain:
+            # Create the genesis block
+            self.new_block(previous_hash='1', proof=100)
+
+    def load_chain(self):
+        if os.path.exists(self.chain_file):
+            try:
+                with open(self.chain_file, "r") as f:
+                    self.chain = json.load(f)
+            except Exception as e:
+                print(f"Error loading blockchain: {e}")
+                self.chain = []
+
+    def save_chain(self):
+        try:
+            with open(self.chain_file, "w") as f:
+                json.dump(self.chain, f, indent=4)
+        except Exception as e:
+            print(f"Error saving blockchain: {e}")
 
     def new_transaction(self, sender, recipient, amount):
     # self = 1, sender = 2, recipient = 3, amount = 4
@@ -31,6 +54,7 @@ class Blockchain:
         }
         self.current_transactions = []
         self.chain.append(block)
+        self.save_chain()
         return block
 
     @staticmethod
