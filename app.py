@@ -238,8 +238,7 @@ def login():
         password = request.form["password"]
 
         conn = psycopg2.connect(os.environ.get('DATABASE_URL'))
-        conn.row_factory = psycopg2.extras.RealDictCursor
-        c = conn.cursor()
+        c = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         c.execute("SELECT * FROM users WHERE username = %s", (username,))
         user = c.fetchone()
         conn.close()
@@ -264,8 +263,7 @@ def face_verify():
         login_face = get_face_roi(image_data)
 
         conn = psycopg2.connect(os.environ.get('DATABASE_URL'))
-        conn.row_factory = psycopg2.extras.RealDictCursor
-        c = conn.cursor()
+        c = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         c.execute(
             "SELECT face_data, role FROM users WHERE username = %s",
             (session["pre_user"],),
@@ -321,8 +319,7 @@ def sender_dashboard():
         return redirect(url_for("login"))
 
     conn = psycopg2.connect(os.environ.get('DATABASE_URL'))
-    conn.row_factory = psycopg2.extras.RealDictCursor
-    c = conn.cursor()
+    c = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     c.execute("SELECT username FROM users WHERE role = 'receiver'")
     receivers = c.fetchall()
     conn.close()
@@ -368,8 +365,7 @@ def view_file(filename):
         return redirect(url_for("login"))
 
     conn = psycopg2.connect(os.environ.get('DATABASE_URL'))
-    conn.row_factory = psycopg2.extras.RealDictCursor
-    c = conn.cursor()
+    c = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     c.execute(
         "SELECT encryption_key, is_burned FROM file_permissions WHERE filename = %s AND (owner = %s OR authorized_receiver = %s)",
         (filename, session["username"], session["username"])
@@ -539,8 +535,7 @@ def receiver_dashboard():
         return redirect(url_for("login"))
 
     conn = psycopg2.connect(os.environ.get('DATABASE_URL'))
-    conn.row_factory = psycopg2.extras.RealDictCursor
-    c = conn.cursor()
+    c = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     c.execute(
         "SELECT filename, max_downloads, current_downloads, is_burned FROM file_permissions WHERE authorized_receiver = %s ORDER BY ROWID DESC",
         (session["username"],),
@@ -565,8 +560,7 @@ def request_download(filename):
 
     if "email" not in session or not session["email"]:
         conn = psycopg2.connect(os.environ.get('DATABASE_URL'))
-        conn.row_factory = psycopg2.extras.RealDictCursor
-        c = conn.cursor()
+        c = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         c.execute("SELECT email FROM users WHERE username = %s", (session["username"],))
         user = c.fetchone()
         conn.close()
@@ -574,8 +568,7 @@ def request_download(filename):
             session["email"] = user["email"]
 
     conn = psycopg2.connect(os.environ.get('DATABASE_URL'))
-    conn.row_factory = psycopg2.extras.RealDictCursor
-    c = conn.cursor()
+    c = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     c.execute(
         "SELECT * FROM file_permissions WHERE filename = %s AND authorized_receiver = %s",
         (filename, session["username"]),
@@ -756,8 +749,7 @@ def request_burn(filename):
 
     if "email" not in session or not session["email"]:
         conn = psycopg2.connect(os.environ.get('DATABASE_URL'))
-        conn.row_factory = psycopg2.extras.RealDictCursor
-        c = conn.cursor()
+        c = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         c.execute("SELECT email FROM users WHERE username = %s", (session["username"],))
         user = c.fetchone()
         conn.close()
