@@ -6,7 +6,9 @@ import hashlib
 import random
 import time
 import datetime
-import sqlite3
+import psycopg2
+import psycopg2.extras
+from psycopg2 import sql
 import pickle
 import secrets
 import io
@@ -55,12 +57,12 @@ recognizer = cv2.face.LBPHFaceRecognizer_create()
 
 # --- DATABASE AND HELPERS ---
 def init_db():
-    conn = sqlite3.connect("users.db")
+    conn = psycopg2.connect(os.environ.get('DATABASE_URL'))
     c = conn.cursor()
     # Users table
     c.execute(
         """CREATE TABLE IF NOT EXISTS users 
-                 (username TEXT PRIMARY KEY, password TEXT, email TEXT, role TEXT, face_data BLOB)"""
+                 (username TEXT PRIMARY KEY, password TEXT, email TEXT, role TEXT, face_data BYTEA)"""
     )
 
     # Updated: Table now includes columns for limits and encryption
@@ -74,20 +76,20 @@ def init_db():
     # Try to alter the table to add new columns if upgrading from old version
     try:
         c.execute("ALTER TABLE file_permissions ADD COLUMN max_downloads INTEGER DEFAULT 1")
-    except sqlite3.OperationalError:
-        pass
+    except psycopg2.DatabaseError:
+        conn.rollback()
     try:
         c.execute("ALTER TABLE file_permissions ADD COLUMN current_downloads INTEGER DEFAULT 0")
-    except sqlite3.OperationalError:
-        pass
+    except psycopg2.DatabaseError:
+        conn.rollback()
     try:
         c.execute("ALTER TABLE file_permissions ADD COLUMN is_burned INTEGER DEFAULT 0")
-    except sqlite3.OperationalError:
-        pass
+    except psycopg2.DatabaseError:
+        conn.rollback()
     try:
         c.execute("ALTER TABLE file_permissions ADD COLUMN encryption_key TEXT")
-    except sqlite3.OperationalError:
-        pass
+    except psycopg2.DatabaseError:
+        conn.rollback()
 
     conn.commit()
     conn.close()
@@ -157,11 +159,11 @@ def register():
         face_blob = pickle.dumps(face_roi)
         hashed_password = generate_password_hash(password)
         try:
-            conn = sqlite3.connect("users.db")
+            conn = psycopg2.connect(os.environ.get('DATABASE_URL'))
             c = conn.cursor()
             c.execute(
-                "INSERT INTO users (username, password, email, role, face_data) VALUES (?, ?, ?, ?, ?)",
-                (username, hashed_password, email, role, face_blob),
+                "INSERT INTO users (username, password, email, role, face_data) VALUES (%s, %s, %s, %s, %s)",
+                (username, hashed_password, email, role, psycopg2.Binary(face_blob)),
             )
             conn.commit()
             conn.close()
@@ -235,10 +237,10 @@ def login():
         username = request.form["username"]
         password = request.form["password"]
 
-        conn = sqlite3.connect("users.db")
-        conn.row_factory = sqlite3.Row
+        conn = psycopg2.connect(os.environ.get('DATABASE_URL'))
+        conn.row_factory = psycopg2.extras.RealDictCursor
         c = conn.cursor()
-        c.execute("SELECT * FROM users WHERE username = ?", (username,))
+        c.execute("SELECT * FROM users WHERE username = %s", (username,))
         user = c.fetchone()
         conn.close()
 
@@ -261,11 +263,11 @@ def face_verify():
         image_data = request.form.get("image")
         login_face = get_face_roi(image_data)
 
-        conn = sqlite3.connect("users.db")
-        conn.row_factory = sqlite3.Row
+        conn = psycopg2.connect(os.environ.get('DATABASE_URL'))
+        conn.row_factory = psycopg2.extras.RealDictCursor
         c = conn.cursor()
         c.execute(
-            "SELECT face_data, role FROM users WHERE username = ?",
+            "SELECT face_data, role FROM users WHERE username = %s",
             (session["pre_user"],),
         )
         user_row = c.fetchone()
@@ -318,8 +320,8 @@ def sender_dashboard():
     if "username" not in session or session.get("role") != "sender":
         return redirect(url_for("login"))
 
-    conn = sqlite3.connect("users.db")
-    conn.row_factory = sqlite3.Row
+    conn = psycopg2.connect(os.environ.get('DATABASE_URL'))
+    conn.row_factory = psycopg2.extras.RealDictCursor
     c = conn.cursor()
     c.execute("SELECT username FROM users WHERE role = 'receiver'")
     receivers = c.fetchall()
@@ -365,11 +367,11 @@ def view_file(filename):
     if "username" not in session:
         return redirect(url_for("login"))
 
-    conn = sqlite3.connect("users.db")
-    conn.row_factory = sqlite3.Row
+    conn = psycopg2.connect(os.environ.get('DATABASE_URL'))
+    conn.row_factory = psycopg2.extras.RealDictCursor
     c = conn.cursor()
     c.execute(
-        "SELECT encryption_key, is_burned FROM file_permissions WHERE filename = ? AND (owner = ? OR authorized_receiver = ?)",
+        "SELECT encryption_key, is_burned FROM file_permissions WHERE filename = %s AND (owner = %s OR authorized_receiver = %s)",
         (filename, session["username"], session["username"])
     )
     perm = c.fetchone()
@@ -431,10 +433,10 @@ def verify_upload():
                 file_to_enc.write(encrypted_data)
 
             # 2. Save Hash and Permission to SQLite Database
-            conn = sqlite3.connect("users.db")
+            conn = psycopg2.connect(os.environ.get('DATABASE_URL'))
             c = conn.cursor()
             c.execute(
-                "INSERT INTO file_permissions (filename, owner, authorized_receiver, file_hash, max_downloads, encryption_key) VALUES (?, ?, ?, ?, ?, ?)",
+                "INSERT INTO file_permissions (filename, owner, authorized_receiver, file_hash, max_downloads, encryption_key) VALUES (%s, %s, %s, %s, %s, %s)",
                 (filename, session["username"], receiver, current_file_hash, max_dl, key.decode()),
             )
             conn.commit()
@@ -448,10 +450,9 @@ def verify_upload():
 
             # 4. Send upload notification email to receiver
             try:
-                conn_n = sqlite3.connect("users.db")
-                conn_n.row_factory = sqlite3.Row
-                c_n = conn_n.cursor()
-                c_n.execute("SELECT email FROM users WHERE username = ?", (receiver,))
+                conn_n = psycopg2.connect(os.environ.get("DATABASE_URL"))
+                c_n = conn_n.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+                c_n.execute("SELECT email FROM users WHERE username = %s", (receiver,))
                 recv_row = c_n.fetchone()
                 conn_n.close()
 
@@ -537,11 +538,11 @@ def receiver_dashboard():
     if "username" not in session or session.get("role") != "receiver":
         return redirect(url_for("login"))
 
-    conn = sqlite3.connect("users.db")
-    conn.row_factory = sqlite3.Row
+    conn = psycopg2.connect(os.environ.get('DATABASE_URL'))
+    conn.row_factory = psycopg2.extras.RealDictCursor
     c = conn.cursor()
     c.execute(
-        "SELECT filename, max_downloads, current_downloads, is_burned FROM file_permissions WHERE authorized_receiver = ? ORDER BY ROWID DESC",
+        "SELECT filename, max_downloads, current_downloads, is_burned FROM file_permissions WHERE authorized_receiver = %s ORDER BY ROWID DESC",
         (session["username"],),
     )
     allowed_files = [dict(row) for row in c.fetchall()]
@@ -563,20 +564,20 @@ def request_download(filename):
         return redirect(url_for("login"))
 
     if "email" not in session or not session["email"]:
-        conn = sqlite3.connect("users.db")
-        conn.row_factory = sqlite3.Row
+        conn = psycopg2.connect(os.environ.get('DATABASE_URL'))
+        conn.row_factory = psycopg2.extras.RealDictCursor
         c = conn.cursor()
-        c.execute("SELECT email FROM users WHERE username = ?", (session["username"],))
+        c.execute("SELECT email FROM users WHERE username = %s", (session["username"],))
         user = c.fetchone()
         conn.close()
         if user:
             session["email"] = user["email"]
 
-    conn = sqlite3.connect("users.db")
-    conn.row_factory = sqlite3.Row
+    conn = psycopg2.connect(os.environ.get('DATABASE_URL'))
+    conn.row_factory = psycopg2.extras.RealDictCursor
     c = conn.cursor()
     c.execute(
-        "SELECT * FROM file_permissions WHERE filename = ? AND authorized_receiver = ?",
+        "SELECT * FROM file_permissions WHERE filename = %s AND authorized_receiver = %s",
         (filename, session["username"]),
     )
     permission = c.fetchone()
@@ -631,11 +632,10 @@ def verify_download():
 
             # Handle decryption and limits
             try:
-                conn_dl = sqlite3.connect("users.db")
-                conn_dl.row_factory = sqlite3.Row
-                c_dl = conn_dl.cursor()
+                conn_dl = psycopg2.connect(os.environ.get("DATABASE_URL"))
+                c_dl = conn_dl.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
                 c_dl.execute(
-                    "SELECT owner, max_downloads, current_downloads, encryption_key FROM file_permissions WHERE filename = ? AND authorized_receiver = ?",
+                    "SELECT owner, max_downloads, current_downloads, encryption_key FROM file_permissions WHERE filename = %s AND authorized_receiver = %s",
                     (filename, session["username"])
                 )
                 perm = c_dl.fetchone()
@@ -652,14 +652,14 @@ def verify_download():
                     is_burned = 1 if new_curr >= perm["max_downloads"] else 0
 
                     c_dl.execute(
-                        "UPDATE file_permissions SET current_downloads = ?, is_burned = ? WHERE filename = ? AND authorized_receiver = ?",
+                        "UPDATE file_permissions SET current_downloads = %s, is_burned = %s WHERE filename = %s AND authorized_receiver = %s",
                         (new_curr, is_burned, filename, session["username"])
                     )
                     conn_dl.commit()
 
                     sender_name = perm["owner"]
                     enc_key = perm["encryption_key"]
-                    c_dl.execute("SELECT email FROM users WHERE username = ?", (sender_name,))
+                    c_dl.execute("SELECT email FROM users WHERE username = %s", (sender_name,))
                     sender_row = c_dl.fetchone()
                     conn_dl.close()
 
@@ -755,19 +755,19 @@ def request_burn(filename):
         return redirect(url_for("login"))
 
     if "email" not in session or not session["email"]:
-        conn = sqlite3.connect("users.db")
-        conn.row_factory = sqlite3.Row
+        conn = psycopg2.connect(os.environ.get('DATABASE_URL'))
+        conn.row_factory = psycopg2.extras.RealDictCursor
         c = conn.cursor()
-        c.execute("SELECT email FROM users WHERE username = ?", (session["username"],))
+        c.execute("SELECT email FROM users WHERE username = %s", (session["username"],))
         user = c.fetchone()
         conn.close()
         if user:
             session["email"] = user["email"]
 
-    conn = sqlite3.connect("users.db")
+    conn = psycopg2.connect(os.environ.get('DATABASE_URL'))
     c = conn.cursor()
     c.execute(
-        "SELECT is_burned FROM file_permissions WHERE filename = ? AND authorized_receiver = ?",
+        "SELECT is_burned FROM file_permissions WHERE filename = %s AND authorized_receiver = %s",
         (filename, session["username"]),
     )
     permission = c.fetchone()
@@ -813,10 +813,10 @@ def verify_burn():
             session.pop("burn_otp", None)
 
             # Mark as burned in DB and delete file
-            conn = sqlite3.connect("users.db")
+            conn = psycopg2.connect(os.environ.get('DATABASE_URL'))
             c = conn.cursor()
             c.execute(
-                "UPDATE file_permissions SET is_burned = 1, current_downloads = max_downloads WHERE filename = ? AND authorized_receiver = ?",
+                "UPDATE file_permissions SET is_burned = 1, current_downloads = max_downloads WHERE filename = %s AND authorized_receiver = %s",
                 (filename, session["username"])
             )
             conn.commit()

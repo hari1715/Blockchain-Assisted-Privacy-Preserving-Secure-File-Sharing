@@ -6,3 +6,4 @@ cryptography==42.0.5
 opencv-contrib-python-headless==4.9.0.80
 numpy==1.26.4
 gunicorn==21.2.0
+psycopg2-binary==2.9.9
