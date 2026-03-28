@@ -223,8 +223,9 @@ def register():
                 print(f"Welcome email error: {e}")
             flash("Registration Successful!", "success")
             return redirect(url_for("login"))
-        except:
-            flash("Username taken.")
+        except Exception as e:
+            print(f"DATABASE/REGISTRATION ERROR: {e}")
+            flash("Username taken or database error. Check logs.")
     return render_template("register.html")
 
 
