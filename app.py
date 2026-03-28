@@ -73,23 +73,7 @@ def init_db():
                   is_burned INTEGER DEFAULT 0, encryption_key TEXT)"""
     )
     
-    # Try to alter the table to add new columns if upgrading from old version
-    try:
-        c.execute("ALTER TABLE file_permissions ADD COLUMN max_downloads INTEGER DEFAULT 1")
-    except psycopg2.DatabaseError:
-        conn.rollback()
-    try:
-        c.execute("ALTER TABLE file_permissions ADD COLUMN current_downloads INTEGER DEFAULT 0")
-    except psycopg2.DatabaseError:
-        conn.rollback()
-    try:
-        c.execute("ALTER TABLE file_permissions ADD COLUMN is_burned INTEGER DEFAULT 0")
-    except psycopg2.DatabaseError:
-        conn.rollback()
-    try:
-        c.execute("ALTER TABLE file_permissions ADD COLUMN encryption_key TEXT")
-    except psycopg2.DatabaseError:
-        conn.rollback()
+    # SQLite legacy logic removed. PostgreSQL creation is handled purely above natively.
 
     conn.commit()
     conn.close()
@@ -537,7 +521,7 @@ def receiver_dashboard():
     conn = psycopg2.connect(os.environ.get('DATABASE_URL'))
     c = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     c.execute(
-        "SELECT filename, max_downloads, current_downloads, is_burned FROM file_permissions WHERE authorized_receiver = %s ORDER BY ROWID DESC",
+        "SELECT filename, max_downloads, current_downloads, is_burned FROM file_permissions WHERE authorized_receiver = %s",
         (session["username"],),
     )
     allowed_files = [dict(row) for row in c.fetchall()]
