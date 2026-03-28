@@ -32,9 +32,14 @@ from blockchain import Blockchain
 
 app = Flask(__name__)
 app.secret_key = "strict_security_key"
+app.config.update(
+    SESSION_COOKIE_SECURE=True,
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE='Lax',
+    MAX_CONTENT_LENGTH=1024 * 1024 * 1024,
+    UPLOAD_FOLDER="static/uploads"
+)
 load_dotenv()
-app.config["MAX_CONTENT_LENGTH"] = 1024 * 1024 * 1024
-app.config["UPLOAD_FOLDER"] = "static/uploads"
 
 # --- EMAIL CONFIGURATION ---
 app.config["MAIL_SERVER"] = "smtp.gmail.com"
