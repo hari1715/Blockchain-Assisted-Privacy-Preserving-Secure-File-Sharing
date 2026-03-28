@@ -39,6 +39,11 @@ app.config.update(
     MAX_CONTENT_LENGTH=1024 * 1024 * 1024,
     UPLOAD_FOLDER="static/uploads"
 )
+
+# Ensure upload directory exists instantly when Gunicorn starts
+if not os.path.exists(app.config["UPLOAD_FOLDER"]):
+    os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
+
 load_dotenv()
 
 # --- EMAIL CONFIGURATION ---
