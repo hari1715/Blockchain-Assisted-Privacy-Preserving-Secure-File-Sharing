@@ -37,10 +37,14 @@ def send_async_email(app, msg):
             print(f"Async Mail Delivery Failed (Likely Hosted Port Block): {e}")
 
 app = Flask(__name__)
-app.secret_key = "strict_security_key"
-load_dotenv()
+load_dotenv() # Load env vars early
+app.secret_key = os.getenv("SECRET_KEY", "strict_security_key")
 app.config["MAX_CONTENT_LENGTH"] = 1024 * 1024 * 1024
 app.config["UPLOAD_FOLDER"] = "static/uploads"
+
+# Ensure upload directory exists before the app handles requests (crucial for Gunicorn)
+if not os.path.exists(app.config["UPLOAD_FOLDER"]):
+    os.makedirs(app.config["UPLOAD_FOLDER"])
 
 # --- EMAIL CONFIGURATION ---
 app.config["MAIL_SERVER"] = "smtp.gmail.com"
