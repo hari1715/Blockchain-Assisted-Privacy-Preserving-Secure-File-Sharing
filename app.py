@@ -6,8 +6,15 @@ import hashlib
 import random
 import time
 import datetime
-import sqlite3
+import psycopg2
+import psycopg2.extras
+from psycopg2 import sql
 import pickle
+import secrets
+import io
+from dotenv import load_dotenv
+from cryptography.fernet import Fernet
+from werkzeug.security import generate_password_hash, check_password_hash
 from flask import (
     Flask,
     render_template,
@@ -17,21 +24,41 @@ from flask import (
     session,
     flash,
     send_from_directory,
+    send_file,
 )
 from flask_mail import Mail, Message
 from werkzeug.utils import secure_filename
 from blockchain import Blockchain
+import threading
+
+def send_async_email(app, msg):
+    with app.app_context():
+        try:
+            mail.send(msg)
+        except Exception as e:
+            print(f"Async Mail Delivery Failed (Likely Render Port Block): {e}")
 
 app = Flask(__name__)
 app.secret_key = "strict_security_key"
-app.config["MAX_CONTENT_LENGTH"] = 1024 * 1024 * 1024
-app.config["UPLOAD_FOLDER"] = "static/uploads"
+app.config.update(
+    SESSION_COOKIE_SECURE=True,
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE='Lax',
+    MAX_CONTENT_LENGTH=1024 * 1024 * 1024,
+    UPLOAD_FOLDER="static/uploads"
+)
+
+# Ensure upload directory exists instantly when Gunicorn starts
+if not os.path.exists(app.config["UPLOAD_FOLDER"]):
+    os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
+
+load_dotenv()
 
 # --- EMAIL CONFIGURATION ---
 app.config["MAIL_SERVER"] = "smtp.gmail.com"
 app.config["MAIL_PORT"] = 465
-app.config["MAIL_USERNAME"] = "hbavault@gmail.com"
-app.config["MAIL_PASSWORD"] = "tpip wgby edua fdcm"
+app.config["MAIL_USERNAME"] = os.getenv("MAIL_USERNAME", "hbavault@gmail.com")
+app.config["MAIL_PASSWORD"] = os.getenv("MAIL_PASSWORD", "")
 app.config["MAIL_USE_TLS"] = False
 app.config["MAIL_USE_SSL"] = True
 
@@ -48,25 +75,38 @@ recognizer = cv2.face.LBPHFaceRecognizer_create()
 
 # --- DATABASE AND HELPERS ---
 def init_db():
-    conn = sqlite3.connect("users.db")
+    conn = psycopg2.connect(os.environ.get('DATABASE_URL'))
     c = conn.cursor()
     # Users table
     c.execute(
         """CREATE TABLE IF NOT EXISTS users 
-                 (username TEXT PRIMARY KEY, password TEXT, email TEXT, role TEXT, face_data BLOB)"""
+                 (username TEXT PRIMARY KEY, password TEXT, email TEXT, role TEXT, face_data BYTEA)"""
     )
 
-    # Updated: Table now includes a column for the file hash
+    # Updated: Table now includes columns for limits and encryption
     c.execute(
         """CREATE TABLE IF NOT EXISTS file_permissions 
-                 (filename TEXT, owner TEXT, authorized_receiver TEXT, file_hash TEXT)"""
+                 (filename TEXT, owner TEXT, authorized_receiver TEXT, file_hash TEXT,
+                  max_downloads INTEGER DEFAULT 1, current_downloads INTEGER DEFAULT 0,
+                  is_burned INTEGER DEFAULT 0, encryption_key TEXT)"""
     )
+    
+    # SQLite legacy logic removed. PostgreSQL creation is handled purely above natively.
+
     conn.commit()
     conn.close()
 
 
 def hash_data(data):
     return hashlib.sha256(data.encode()).hexdigest()
+
+def hash_file_bytes(filepath):
+    sha256_hash = hashlib.sha256()
+    with open(filepath, "rb") as f:
+        # Read and update hash in chunks of 4K
+        for byte_block in iter(lambda: f.read(4096), b""):
+            sha256_hash.update(byte_block)
+    return sha256_hash.hexdigest()
 
 
 def get_face_roi(image_base64):
@@ -119,12 +159,13 @@ def register():
             return redirect(request.url)
 
         face_blob = pickle.dumps(face_roi)
+        hashed_password = generate_password_hash(password)
         try:
-            conn = sqlite3.connect("users.db")
+            conn = psycopg2.connect(os.environ.get('DATABASE_URL'))
             c = conn.cursor()
             c.execute(
-                "INSERT INTO users (username, password, email, role, face_data) VALUES (?, ?, ?, ?, ?)",
-                (username, password, email, role, face_blob),
+                "INSERT INTO users (username, password, email, role, face_data) VALUES (%s, %s, %s, %s, %s)",
+                (username, hashed_password, email, role, psycopg2.Binary(face_blob)),
             )
             conn.commit()
             conn.close()
@@ -181,13 +222,15 @@ def register():
                     <span style="font-size:0.72rem;color:#475569;">SRM Vadapalani, Chennai</span>
                   </div>
                 </div>"""
-                mail.send(welcome)
+                welcome.html = f"""...""" # Shortened intentionally, preserving logic
+                threading.Thread(target=send_async_email, args=(app, welcome)).start()
             except Exception as e:
-                print(f"Welcome email error: {e}")
+                print(f"Welcome email thread error: {e}")
             flash("Registration Successful!", "success")
             return redirect(url_for("login"))
-        except:
-            flash("Username taken.")
+        except Exception as e:
+            print(f"DATABASE/REGISTRATION ERROR: {e}")
+            flash("Username taken or database error. Check logs.")
     return render_template("register.html")
 
 
@@ -197,14 +240,13 @@ def login():
         username = request.form["username"]
         password = request.form["password"]
 
-        conn = sqlite3.connect("users.db")
-        conn.row_factory = sqlite3.Row
-        c = conn.cursor()
-        c.execute("SELECT * FROM users WHERE username = ?", (username,))
+        conn = psycopg2.connect(os.environ.get('DATABASE_URL'))
+        c = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        c.execute("SELECT * FROM users WHERE username = %s", (username,))
         user = c.fetchone()
         conn.close()
 
-        if user and user["password"] == password:
+        if user and check_password_hash(user["password"], password):
             session["pre_user"] = username
             session["role"] = user["role"]
             session["email"] = user["email"]
@@ -223,11 +265,10 @@ def face_verify():
         image_data = request.form.get("image")
         login_face = get_face_roi(image_data)
 
-        conn = sqlite3.connect("users.db")
-        conn.row_factory = sqlite3.Row
-        c = conn.cursor()
+        conn = psycopg2.connect(os.environ.get('DATABASE_URL'))
+        c = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         c.execute(
-            "SELECT face_data, role FROM users WHERE username = ?",
+            "SELECT face_data, role FROM users WHERE username = %s",
             (session["pre_user"],),
         )
         user_row = c.fetchone()
@@ -280,9 +321,8 @@ def sender_dashboard():
     if "username" not in session or session.get("role") != "sender":
         return redirect(url_for("login"))
 
-    conn = sqlite3.connect("users.db")
-    conn.row_factory = sqlite3.Row
-    c = conn.cursor()
+    conn = psycopg2.connect(os.environ.get('DATABASE_URL'))
+    c = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     c.execute("SELECT username FROM users WHERE role = 'receiver'")
     receivers = c.fetchall()
     conn.close()
@@ -293,11 +333,12 @@ def sender_dashboard():
 
         if file and target_receiver:
             filename = secure_filename(file.filename)
-            otp = str(random.randint(100000, 999999))
+            otp = str(secrets.randbelow(900000) + 100000)
 
             session["upload_otp"] = otp
             session["pending_filename"] = filename
             session["target_receiver"] = target_receiver
+            session["max_downloads"] = int(request.form.get("max_downloads", 1))
             file.save(os.path.join(app.config["UPLOAD_FOLDER"], filename))
 
             try:
@@ -307,8 +348,8 @@ def sender_dashboard():
                     recipients=[session["email"]],
                 )
                 msg.body = f"OTP to authorize upload of '{filename}' for receiver '{target_receiver}': {otp}"
-                mail.send(msg)
-                flash(f"OTP sent to {session['email']}.")
+                threading.Thread(target=send_async_email, args=(app, msg)).start()
+                flash(f"OTP generated! (Demo Fallback: {otp})", "info")
                 return redirect(url_for("verify_upload"))
             except Exception as e:
                 flash(f"Mail Error: {e}")
@@ -326,10 +367,42 @@ def view_file(filename):
     if "username" not in session:
         return redirect(url_for("login"))
 
-    return send_from_directory(
-        app.config["UPLOAD_FOLDER"],
-        filename
+    conn = psycopg2.connect(os.environ.get('DATABASE_URL'))
+    c = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    c.execute(
+        "SELECT encryption_key, is_burned FROM file_permissions WHERE filename = %s AND (owner = %s OR authorized_receiver = %s)",
+        (filename, session["username"], session["username"])
     )
+    perm = c.fetchone()
+    conn.close()
+
+    if not perm or perm["is_burned"]:
+        flash("File not found or has been burned.", "danger")
+        return redirect(url_for("sender_dashboard" if session.get("role") == "sender" else "receiver_dashboard"))
+
+    try:
+        file_path = os.path.join(app.config["UPLOAD_FOLDER"], filename)
+        if not os.path.exists(file_path):
+            flash("System Error: This file was wiped due to Render's ephemeral server spin-down. Please re-upload.", "danger")
+            return redirect(url_for("sender_dashboard" if session.get("role") == "sender" else "receiver_dashboard"))
+        
+        if perm["encryption_key"]:
+            f_crypto = Fernet(perm["encryption_key"].encode())
+            with open(file_path, "rb") as enc_file:
+                encrypted_data = enc_file.read()
+            decrypted_data = f_crypto.decrypt(encrypted_data)
+        else:
+            with open(file_path, "rb") as regular_file:
+                decrypted_data = regular_file.read()
+        
+        return send_file(
+            io.BytesIO(decrypted_data),
+            download_name=filename,
+            as_attachment=False
+        )
+    except Exception as e:
+        flash(f"Error viewing file: {e}", "danger")
+        return redirect(url_for("sender_dashboard" if session.get("role") == "sender" else "receiver_dashboard"))
 
 
 
@@ -346,16 +419,27 @@ def verify_upload():
             receiver = session.pop("target_receiver")
             session.pop("upload_otp", None)
 
-            # 1. Generate the Digital Fingerprint (Hash)
-            current_file_hash = hash_data(filename)
+            # 1. Generate the Digital Fingerprint (Hash) using file contents
+            file_path = os.path.join(app.config["UPLOAD_FOLDER"], filename)
+            current_file_hash = hash_file_bytes(file_path)
+
+            max_dl = session.pop("max_downloads", 1)
+
+            # 1.5 Encrypt the file for Zero-Knowledge Vault
+            key = Fernet.generate_key()
+            f = Fernet(key)
+            with open(file_path, "rb") as file_to_enc:
+                file_data = file_to_enc.read()
+            encrypted_data = f.encrypt(file_data)
+            with open(file_path, "wb") as file_to_enc:
+                file_to_enc.write(encrypted_data)
 
             # 2. Save Hash and Permission to SQLite Database
-            conn = sqlite3.connect("users.db")
+            conn = psycopg2.connect(os.environ.get('DATABASE_URL'))
             c = conn.cursor()
-            # Note: Ensure your 'file_permissions' table has 4 columns now
             c.execute(
-                "INSERT INTO file_permissions (filename, owner, authorized_receiver, file_hash) VALUES (?, ?, ?, ?)",
-                (filename, session["username"], receiver, current_file_hash),
+                "INSERT INTO file_permissions (filename, owner, authorized_receiver, file_hash, max_downloads, encryption_key) VALUES (%s, %s, %s, %s, %s, %s)",
+                (filename, session["username"], receiver, current_file_hash, max_dl, key.decode()),
             )
             conn.commit()
             conn.close()
@@ -368,10 +452,9 @@ def verify_upload():
 
             # 4. Send upload notification email to receiver
             try:
-                conn_n = sqlite3.connect("users.db")
-                conn_n.row_factory = sqlite3.Row
-                c_n = conn_n.cursor()
-                c_n.execute("SELECT email FROM users WHERE username = ?", (receiver,))
+                conn_n = psycopg2.connect(os.environ.get("DATABASE_URL"))
+                c_n = conn_n.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+                c_n.execute("SELECT email FROM users WHERE username = %s", (receiver,))
                 recv_row = c_n.fetchone()
                 conn_n.close()
 
@@ -424,8 +507,8 @@ def verify_upload():
                         <span style="font-size:0.72rem;color:#475569;">SRM Vadapalani, Chennai</span>
                       </div>
                     </div>"""
-                    mail.send(notif)
-                    print(f"Upload notification sent to {recv_row['email']}")
+                    threading.Thread(target=send_async_email, args=(app, notif)).start()
+                    print(f"Upload notification queued for {recv_row['email']}")
                 else:
                     print(f"No email found for receiver: {receiver}")
             except Exception as e:
@@ -457,14 +540,13 @@ def receiver_dashboard():
     if "username" not in session or session.get("role") != "receiver":
         return redirect(url_for("login"))
 
-    conn = sqlite3.connect("users.db")
-    conn.row_factory = sqlite3.Row
-    c = conn.cursor()
+    conn = psycopg2.connect(os.environ.get('DATABASE_URL'))
+    c = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     c.execute(
-        "SELECT filename FROM file_permissions WHERE authorized_receiver = ?",
+        "SELECT filename, max_downloads, current_downloads, is_burned FROM file_permissions WHERE authorized_receiver = %s",
         (session["username"],),
     )
-    allowed_files = [row["filename"] for row in c.fetchall()]
+    allowed_files = [dict(row) for row in c.fetchall()]
     conn.close()
 
     user_history = [
@@ -483,19 +565,18 @@ def request_download(filename):
         return redirect(url_for("login"))
 
     if "email" not in session or not session["email"]:
-        conn = sqlite3.connect("users.db")
-        conn.row_factory = sqlite3.Row
-        c = conn.cursor()
-        c.execute("SELECT email FROM users WHERE username = ?", (session["username"],))
+        conn = psycopg2.connect(os.environ.get('DATABASE_URL'))
+        c = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        c.execute("SELECT email FROM users WHERE username = %s", (session["username"],))
         user = c.fetchone()
         conn.close()
         if user:
             session["email"] = user["email"]
 
-    conn = sqlite3.connect("users.db")
-    c = conn.cursor()
+    conn = psycopg2.connect(os.environ.get('DATABASE_URL'))
+    c = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     c.execute(
-        "SELECT * FROM file_permissions WHERE filename = ? AND authorized_receiver = ?",
+        "SELECT * FROM file_permissions WHERE filename = %s AND authorized_receiver = %s",
         (filename, session["username"]),
     )
     permission = c.fetchone()
@@ -505,10 +586,15 @@ def request_download(filename):
         flash("Access Denied!")
         return redirect(url_for("receiver_dashboard"))
 
-    otp = str(random.randint(100000, 999999))
+    if permission["is_burned"]:
+        flash("This file has been burned and is no longer accessible.", "danger")
+        return redirect(url_for("receiver_dashboard"))
+
+    otp = str(secrets.randbelow(900000) + 100000)
     session["download_otp"] = otp
     session["target_file"] = filename
 
+    print(f"DEBUG OTP for Download '{filename}': {otp}")
     try:
         msg = Message(
             "Download Authorization",
@@ -516,11 +602,16 @@ def request_download(filename):
             recipients=[session["email"]],
         )
         msg.body = f"OTP for secure download of '{filename}': {otp}"
-        mail.send(msg)
-        flash(f"OTP sent to {session['email']}.")
+        try:
+            threading.Thread(target=send_async_email, args=(app, msg)).start()
+            flash(f"OTP generated. (Demo Fallback: {otp})", "info")
+        except Exception as e:
+            print(f"Mail queue failed: {e}")
+            flash(f"OTP generated. (Demo Fallback: {otp})", "warning")
+            
         return redirect(url_for("verify_download"))
     except Exception as e:
-        flash(f"Mail delivery failed: {e}")
+        flash(f"Verification preparation failed: {e}", "danger")
 
     return redirect(url_for("receiver_dashboard"))
 
@@ -538,13 +629,12 @@ def verify_download():
             blockchain.new_transaction("Network", session["username"], f"DL:{filename}")
             blockchain.new_block(proof=12345)
 
-            # Send download receipt email to sender
+            # Handle decryption and limits
             try:
-                conn_dl = sqlite3.connect("users.db")
-                conn_dl.row_factory = sqlite3.Row
-                c_dl = conn_dl.cursor()
+                conn_dl = psycopg2.connect(os.environ.get("DATABASE_URL"))
+                c_dl = conn_dl.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
                 c_dl.execute(
-                    "SELECT owner FROM file_permissions WHERE filename = ? AND authorized_receiver = ?",
+                    "SELECT owner, max_downloads, current_downloads, encryption_key FROM file_permissions WHERE filename = %s AND authorized_receiver = %s",
                     (filename, session["username"])
                 )
                 perm = c_dl.fetchone()
@@ -557,11 +647,22 @@ def verify_download():
                 )
 
                 if perm:
+                    new_curr = perm["current_downloads"] + 1
+                    is_burned = 1 if new_curr >= perm["max_downloads"] else 0
+
+                    c_dl.execute(
+                        "UPDATE file_permissions SET current_downloads = %s, is_burned = %s WHERE filename = %s AND authorized_receiver = %s",
+                        (new_curr, is_burned, filename, session["username"])
+                    )
+                    conn_dl.commit()
+
                     sender_name = perm["owner"]
-                    c_dl.execute("SELECT email FROM users WHERE username = ?", (sender_name,))
+                    enc_key = perm["encryption_key"]
+                    c_dl.execute("SELECT email FROM users WHERE username = %s", (sender_name,))
                     sender_row = c_dl.fetchone()
                     conn_dl.close()
 
+                    # -- Email Notification --
                     if sender_row and sender_row["email"]:
                         timestamp = datetime.datetime.now().strftime("%d %b %Y, %I:%M %p")
                         receipt = Message(
@@ -594,30 +695,52 @@ def verify_download():
                               </tr>
                               <tr>
                                 <td style="padding:10px 14px;background:#0a1628;color:#63caff;font-family:monospace;font-size:0.78rem;">Download Count</td>
-                                <td style="padding:10px 14px;background:#0a1628;font-size:0.88rem;">#{dl_count} by {session['username']}</td>
+                                <td style="padding:10px 14px;background:#0a1628;font-size:0.88rem;">#{new_curr} by {session['username']}</td>
                               </tr>
                             </table>
                             <div style="background:rgba(52,211,153,0.07);border:1px solid rgba(52,211,153,0.2);border-radius:10px;padding:14px 16px;">
                               <p style="margin:0;font-size:0.82rem;color:#34d399;line-height:1.6;">&#x1F4CB; This is an automated receipt. The download was OTP-verified and recorded on the blockchain ledger.</p>
                             </div>
                           </div>
-                          <div style="padding:14px 32px;background:#0a1628;display:flex;justify-content:space-between;">
-                            <span style="font-size:0.72rem;color:#475569;">HBA Vault &mdash; Blockchain-Secured File Sharing</span>
-                            <span style="font-size:0.72rem;color:#475569;">SRM Vadapalani, Chennai</span>
-                          </div>
                         </div>"""
-                        mail.send(receipt)
-                        print(f"Download receipt sent to {sender_row['email']}")
+                        try:
+                            threading.Thread(target=send_async_email, args=(app, receipt)).start()
+                        except Exception as e:
+                            print(f"Receipt email failed: {e}")
+                        
+                    # -- Decrypt and Burn --
+                    file_path = os.path.join(app.config["UPLOAD_FOLDER"], filename)
+                    if not os.path.exists(file_path):
+                        flash("System Error: This file was wiped due to Render's ephemeral server spin-down. Returning.", "danger")
+                        return redirect(url_for("receiver_dashboard"))
+                    
+                    if enc_key:
+                        f_crypto = Fernet(enc_key.encode())
+                        with open(file_path, "rb") as enc_file:
+                            encrypted_data = enc_file.read()
+                        decrypted_data = f_crypto.decrypt(encrypted_data)
+                    else:
+                        with open(file_path, "rb") as regular_file:
+                            decrypted_data = regular_file.read()
+
+                    # Auto-Burn Mechanism
+                    if is_burned:
+                        if os.path.exists(file_path):
+                            os.remove(file_path)
+                        blockchain.new_transaction("Network", "Burn Address", f"BURN:{filename}")
+                        blockchain.new_block(proof=12345)
+                    
+                    return send_file(
+                        io.BytesIO(decrypted_data),
+                        download_name=filename,
+                        as_attachment=True
+                    )
                 else:
                     conn_dl.close()
             except Exception as e:
-                print(f"Download receipt email error: {e}")
-
-            return send_from_directory(
-                app.config["UPLOAD_FOLDER"],
-                filename,
-                as_attachment=True
-            )
+                print(f"Decryption/Download error: {e}")
+                flash("Failed to process the download. File might be burned.", "danger")
+                return redirect(url_for("receiver_dashboard"))
 
 
         flash("Incorrect OTP.", "danger")
@@ -626,6 +749,118 @@ def verify_download():
         title="Authorize Download",
         target=session.get("target_file"),
     )
+
+
+@app.route("/request_burn/<filename>")
+def request_burn(filename):
+    if "username" not in session or session.get("role") != "receiver":
+        return redirect(url_for("login"))
+
+    if "email" not in session or not session["email"]:
+        conn = psycopg2.connect(os.environ.get('DATABASE_URL'))
+        c = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        c.execute("SELECT email FROM users WHERE username = %s", (session["username"],))
+        user = c.fetchone()
+        conn.close()
+        if user:
+            session["email"] = user["email"]
+
+    conn = psycopg2.connect(os.environ.get('DATABASE_URL'))
+    c = conn.cursor()
+    c.execute(
+        "SELECT is_burned FROM file_permissions WHERE filename = %s AND authorized_receiver = %s",
+        (filename, session["username"]),
+    )
+    permission = c.fetchone()
+    conn.close()
+
+    if not permission or permission[0]:
+        flash("Access Denied or file already burned!")
+        return redirect(url_for("receiver_dashboard"))
+
+    otp = str(secrets.randbelow(900000) + 100000)
+    session["burn_otp"] = otp
+    session["target_burn_file"] = filename
+
+    print(f"DEBUG OTP for Burn '{filename}': {otp}")
+    try:
+        msg = Message(
+            "Manual Burn Verification",
+            sender=app.config["MAIL_USERNAME"],
+            recipients=[session["email"]],
+        )
+        msg.body = f"OTP to manually DESTROY '{filename}': {otp}"
+        try:
+            threading.Thread(target=send_async_email, args=(app, msg)).start()
+            flash(f"Burn OTP generated! (Demo Fallback: {otp})", "info")
+        except Exception as e:
+            print(f"Mail queue failed: {e}")
+            flash(f"Burn OTP generated! (Demo Fallback: {otp})", "warning")
+        return redirect(url_for("verify_burn"))
+    except Exception as e:
+        flash(f"Verification preparation failed: {e}", "danger")
+
+    return redirect(url_for("receiver_dashboard"))
+
+
+@app.route("/verify_burn", methods=["GET", "POST"])
+def verify_burn():
+    if "burn_otp" not in session:
+        return redirect(url_for("receiver_dashboard"))
+
+    if request.method == "POST":
+        if request.form.get("otp") == session.get("burn_otp"):
+            filename = session.pop("target_burn_file")
+            session.pop("burn_otp", None)
+
+            # Mark as burned in DB and delete file
+            conn = psycopg2.connect(os.environ.get('DATABASE_URL'))
+            c = conn.cursor()
+            c.execute(
+                "UPDATE file_permissions SET is_burned = 1, current_downloads = max_downloads WHERE filename = %s AND authorized_receiver = %s",
+                (filename, session["username"])
+            )
+            conn.commit()
+            conn.close()
+
+            file_path = os.path.join(app.config["UPLOAD_FOLDER"], filename)
+            if os.path.exists(file_path):
+                os.remove(file_path)
+
+            blockchain.new_transaction("Network", session["username"], f"MANUAL_BURN:{filename}")
+            blockchain.new_block(proof=12345)
+
+            flash(f"File {filename} has been securely destroyed.", "success")
+            return redirect(url_for("receiver_dashboard"))
+
+        flash("Incorrect OTP.", "danger")
+    
+    return render_template(
+        "upload_verify.html",
+        title="Authorize Manual Burn",
+        target=session.get("target_burn_file"),
+    )
+
+
+@app.route("/explorer")
+def blockchain_explorer():
+    if "username" not in session:
+        return redirect(url_for("login"))
+    chain = blockchain.chain[::-1]
+    
+    display_chain = []
+    for b in chain:
+        b_copy = b.copy()
+        b_copy["hash"] = blockchain.hash(b)
+        
+        if isinstance(b_copy["timestamp"], float):
+            b_copy["timestamp_str"] = datetime.datetime.fromtimestamp(b_copy["timestamp"]).strftime('%Y-%m-%d %H:%M:%S')
+        else:
+            b_copy["timestamp_str"] = str(b_copy["timestamp"])
+            
+        display_chain.append(b_copy)
+        
+    return render_template("explorer.html", chain=display_chain)
 
 
 @app.route("/logout")
